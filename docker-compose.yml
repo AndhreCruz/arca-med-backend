@@ -1,0 +1,15 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: arca
+      POSTGRES_PASSWORD: arca123
+      POSTGRES_DB: arcamed
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
+
+volumes:
+  pgdata:
