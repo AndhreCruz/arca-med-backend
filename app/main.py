@@ -6,6 +6,7 @@ from database import get_db
 from models import Usuario
 from schemas import UsuarioCreate, UsuarioLogin, Token
 from auth import hash_password, verify_password, create_token
+from deps import get_current_user, require_role
 
 app = FastAPI()
 
@@ -47,3 +48,18 @@ def login(datos: UsuarioLogin, db: Session = Depends(get_db)):
 
     token = create_token(usuario.id, usuario.rol)
     return {"access_token": token, "rol": usuario.rol}
+
+@app.get("/me")
+def leer_mi_perfil(usuario_actual: Usuario = Depends(get_current_user)):
+    return {"id": usuario_actual.id, "nombre": usuario_actual.nombre, "rol": usuario_actual.rol}
+
+
+@app.get("/medico/dashboard")
+def dashboard_medico(usuario_actual: Usuario = Depends(require_role("medico"))):
+    return {"mensaje": f"Bienvenido doctor(a) {usuario_actual.nombre}"}
+
+
+@app.get("/admin/usuarios")
+def listar_usuarios(usuario_actual: Usuario = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    usuarios = db.query(Usuario).all()
+    return [{"id": u.id, "nombre": u.nombre, "email": u.email, "rol": u.rol} for u in usuarios]
