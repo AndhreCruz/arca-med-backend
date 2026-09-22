@@ -47,7 +47,7 @@ La mayoría de los endpoints requieren estar logueado. El flujo general, sin imp
 
 ### Web (React)
 
-Guardar el token después del login (ej. en `localStorage`https://github.com/AndhreCruz/arca-med-backend.git):
+Guardar el token después del login (ej. en `localStorage`):
 ```js
 const res = await fetch("http://localhost:8000/auth/login", {
   method: "POST",
@@ -87,6 +87,32 @@ val response = apiService.getMe("Bearer $accessToken")
 
 Guardar el token entre sesiones con `DataStore` o `SharedPreferences` (evitar guardarlo en una variable en memoria simple, se perdería al cerrar la app).
 
+### Subir un archivo (`/documentos`)
+
+Este endpoint espera `multipart/form-data`, no JSON — la forma de mandarlo cambia un poco:
+
+**Web (React):**
+```js
+const formData = new FormData();
+formData.append("archivo", archivoSeleccionado); 
+
+const res = await fetch("http://localhost:8000/documentos", {
+  method: "POST",
+  headers: { Authorization: `Bearer ${token}` }, 
+  body: formData,
+});
+```
+
+**App (Kotlin con Retrofit):**
+```kotlin
+@Multipart
+@POST("documentos")
+suspend fun subirDocumento(
+    @Header("Authorization") token: String,
+    @Part archivo: MultipartBody.Part
+): DocumentoResponse
+```
+
 ### Qué pasa si el token falta o es inválido
 
 La API responde:
@@ -104,8 +130,10 @@ La API responde:
 | GET | `/me` | cualquier usuario logueado | Devuelve los datos del usuario dueño del token |
 | GET | `/medico/dashboard` | medico | Endpoint de ejemplo, solo accesible por médicos |
 | GET | `/admin/usuarios` | admin | Lista todos los usuarios registrados |
+| POST | `/sintomas` | paciente | Registra un síntoma. Body: `{descripcion}`. Devuelve `{id, descripcion}` |
+| POST | `/documentos` | paciente | Sube un documento (PDF/JPG/PNG, máx 10MB). Body: `multipart/form-data` con el archivo en el campo `archivo`. Devuelve `{id, nombre_archivo, ruta_archivo}` |
 
-> Este listado se irá actualizando a medida que se agreguen más endpoints (síntomas, documentos, etc.). Revisa también `API_CONTRACT.md` para ver el diseño completo planeado, incluyendo lo que aún no está implementado.
+> Este listado se irá actualizando a medida que se agreguen más endpoints. Revisa también `API_CONTRACT.md` para ver el diseño completo planeado, incluyendo lo que aún no está implementado.
 
 ## Roles válidos al registrarse
 
