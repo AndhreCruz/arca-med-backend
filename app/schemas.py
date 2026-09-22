@@ -13,3 +13,23 @@ class UsuarioLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     rol: str
+
+
+class SintomaCreate(BaseModel):
+    descripcion: str
+
+class SintomaResponse(BaseModel):
+    id: int
+    descripcion: str
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentoResponse(BaseModel):
+    id: int
+    nombre_archivo: str
+    ruta_archivo: str
+
+    class Config:
+        from_attributes = True
