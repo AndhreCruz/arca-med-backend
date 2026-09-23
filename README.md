@@ -1,5 +1,21 @@
 # ARCA Med — Backend
 
+## Sobre el proyecto
+
+**ARCA Med** es un sistema de **pre-consulta asistida por inteligencia artificial**, compuesto por una aplicación Android y una plataforma web, diseñado específicamente para el ámbito de **kinesiología y traumatología**.
+
+El sistema permite al paciente, antes de su consulta presencial:
+
+- Registrar sus síntomas y antecedentes relevantes.
+- Subir documentos médicos previos.
+- Capturar su rango de movimiento articular mediante la cámara del celular.
+
+A partir de esta información, ARCA Med genera un **resumen clínico** y un **prediagnóstico sugerido mediante RAG (Retrieval-Augmented Generation) sobre guías clínicas**, que posteriormente es revisado por el profesional de salud desde un dashboard de triage antes de la atención presencial.
+
+El objetivo es **agilizar y enriquecer la consulta**, proporcionando al profesional información estructurada y antecedentes recopilados previamente.
+
+> Este repositorio corresponde al **backend de ARCA Med**.
+
 ## Cómo levantar el proyecto
 
 Requisitos: [Docker Desktop](https://www.docker.com/products/docker-desktop/) y Python 3.11+.
