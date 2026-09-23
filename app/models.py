@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.sql import func
+from sqlalchemy import Numeric
 from database import Base
 
 class Usuario(Base):
@@ -31,3 +32,14 @@ class Documento(Base):
     ruta_archivo = Column(String(500), nullable=False)
     tipo_archivo = Column(String(50))
     subido_en = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class MetricaFisica(Base):
+    __tablename__ = "metricas_fisicas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"))
+    articulacion = Column(String(50), nullable=False)
+    angulo_maximo = Column(Numeric(5, 2))
+    angulo_minimo = Column(Numeric(5, 2))
+    medido_en = Column(DateTime(timezone=True), server_default=func.now())

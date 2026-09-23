@@ -33,3 +33,18 @@ class DocumentoResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class MetricaCreate(BaseModel):
+    articulacion: str
+    angulo_maximo: float
+    angulo_minimo: float
+
+class MetricaResponse(BaseModel):
+    id: int
+    articulacion: str
+    angulo_maximo: float
+    angulo_minimo: float
+
+    class Config:
+        from_attributes = True

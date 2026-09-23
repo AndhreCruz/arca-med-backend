@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from database import get_db
-from models import Usuario, Sintoma, Documento
-from schemas import UsuarioCreate, UsuarioLogin, Token, SintomaCreate, SintomaResponse, DocumentoResponse
+from models import Usuario, Sintoma, Documento, MetricaFisica
+from schemas import UsuarioCreate, UsuarioLogin, Token, SintomaCreate, SintomaResponse, DocumentoResponse, MetricaCreate, MetricaResponse
 from auth import hash_password, verify_password, create_token
 from deps import get_current_user, require_role
 
@@ -114,3 +114,21 @@ def subir_documento(
     db.commit()
     db.refresh(nuevo_doc)
     return nuevo_doc
+
+
+@app.post("/metricas", response_model=MetricaResponse)
+def crear_metrica(
+    datos: MetricaCreate,
+    usuario_actual: Usuario = Depends(require_role("paciente")),
+    db: Session = Depends(get_db)
+):
+    nueva = MetricaFisica(
+        usuario_id=usuario_actual.id,
+        articulacion=datos.articulacion,
+        angulo_maximo=datos.angulo_maximo,
+        angulo_minimo=datos.angulo_minimo,
+    )
+    db.add(nueva)
+    db.commit()
+    db.refresh(nueva)
+    return nueva
