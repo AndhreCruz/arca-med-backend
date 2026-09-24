@@ -5,10 +5,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from database import get_db
-from models import Usuario, Sintoma, Documento, MetricaFisica
-from schemas import UsuarioCreate, UsuarioLogin, Token, SintomaCreate, SintomaResponse, DocumentoResponse, MetricaCreate, MetricaResponse
+from models import Usuario, Sintoma, Documento, MetricaFisica, GuiaClinica
+from schemas import UsuarioCreate, UsuarioLogin, Token, SintomaCreate, SintomaResponse, DocumentoResponse, MetricaCreate, MetricaResponse, GuiaClinicaCreate, GuiaClinicaResponse
 from auth import hash_password, verify_password, create_token
 from deps import get_current_user, require_role
+from embeddings import generar_embedding
 
 app = FastAPI()
 
@@ -132,3 +133,22 @@ def crear_metrica(
     db.commit()
     db.refresh(nueva)
     return nueva
+
+
+@app.post("/guias-clinicas", response_model=GuiaClinicaResponse)
+def crear_guia_clinica(
+    datos: GuiaClinicaCreate,
+    usuario_actual: Usuario = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    vector = generar_embedding(datos.contenido)
+
+    nueva_guia = GuiaClinica(
+        titulo=datos.titulo,
+        contenido=datos.contenido,
+        embedding=vector,
+    )
+    db.add(nueva_guia)
+    db.commit()
+    db.refresh(nueva_guia)
+    return nueva_guia

@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.sql import func
 from sqlalchemy import Numeric
 from database import Base
+from pgvector.sqlalchemy import Vector
 
 class Usuario(Base):
     __tablename__ = "usuarios"
@@ -43,3 +44,13 @@ class MetricaFisica(Base):
     angulo_maximo = Column(Numeric(5, 2))
     angulo_minimo = Column(Numeric(5, 2))
     medido_en = Column(DateTime(timezone=True), server_default=func.now())
+    
+
+class GuiaClinica(Base):
+    __tablename__ = "guias_clinicas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    titulo = Column(String(255), nullable=False)
+    contenido = Column(Text, nullable=False)
+    embedding = Column(Vector(1536))
+    creado_en = Column(DateTime(timezone=True), server_default=func.now())

@@ -48,3 +48,15 @@ class MetricaResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        
+        
+class GuiaClinicaCreate(BaseModel):
+    titulo: str
+    contenido: str
+
+class GuiaClinicaResponse(BaseModel):
+    id: int
+    titulo: str
+
+    class Config:
+        from_attributes = True
