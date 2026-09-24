@@ -148,6 +148,7 @@ La API responde:
 | GET | `/admin/usuarios` | admin | Lista todos los usuarios registrados |
 | POST | `/sintomas` | paciente | Registra un síntoma. Body: `{descripcion}`. Devuelve `{id, descripcion}` |
 | POST | `/documentos` | paciente | Sube un documento (PDF/JPG/PNG, máx 10MB). Body: `multipart/form-data` con el archivo en el campo `archivo`. Devuelve `{id, nombre_archivo, ruta_archivo}` |
+| POST | `/metricas` | paciente | Registra una métrica de rango de movimiento. Body: `{articulacion, angulo_maximo, angulo_minimo}`. Devuelve `{id, articulacion, angulo_maximo, angulo_minimo}` |
 
 > Este listado se irá actualizando a medida que se agreguen más endpoints. Revisa también `API_CONTRACT.md` para ver el diseño completo planeado, incluyendo lo que aún no está implementado.
 
