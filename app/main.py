@@ -17,17 +17,7 @@ EXTENSIONES_PERMITIDAS = {".pdf", ".jpg", ".jpeg", ".png"}
 TAMANO_MAXIMO_MB = 10
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-@app.get("/health/db")
-def health_db(db: Session = Depends(get_db)):
-    db.execute(text("SELECT 1"))
-    return {"status": "conectado a la base de datos"}
-
-
-@app.post("/auth/register", response_model=Token)
+@app.post("/auth/registro", response_model=Token)
 def register(datos: UsuarioCreate, db: Session = Depends(get_db)):
     nuevo_usuario = Usuario(
         nombre=datos.nombre,
@@ -47,7 +37,7 @@ def register(datos: UsuarioCreate, db: Session = Depends(get_db)):
     return {"access_token": token, "rol": nuevo_usuario.rol}
 
 
-@app.post("/auth/login", response_model=Token)
+@app.post("/auth/inicio-sesion", response_model=Token)
 def login(datos: UsuarioLogin, db: Session = Depends(get_db)):
     usuario = db.query(Usuario).filter(Usuario.email == datos.email).first()
     if not usuario or not verify_password(datos.password, usuario.password_hash):
@@ -57,7 +47,7 @@ def login(datos: UsuarioLogin, db: Session = Depends(get_db)):
     return {"access_token": token, "rol": usuario.rol}
 
 
-@app.get("/me")
+@app.get("/perfil")
 def leer_mi_perfil(usuario_actual: Usuario = Depends(get_current_user)):
     return {"id": usuario_actual.id, "nombre": usuario_actual.nombre, "rol": usuario_actual.rol}
 

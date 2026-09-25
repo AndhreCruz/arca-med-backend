@@ -2,11 +2,11 @@
 
 ## Autenticación (público)
 
-### POST /auth/register
+### POST /auth/registro
 Body: { "nombre": string, "email": string, "password": string, "rol": "paciente"|"medico"|"admin" }
 Devuelve: { "id": int, "token": string }
 
-### POST /auth/login
+### POST /auth/inicio-sesion
 Body: { "email": string, "password": string }
 Devuelve: { "token": string, "rol": string }
 

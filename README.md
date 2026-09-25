@@ -139,11 +139,9 @@ La API responde:
 
 | Método | Ruta | Rol requerido | Descripción |
 |---|---|---|---|
-| GET | `/health` | — | Confirma que el servidor está corriendo |
-| GET | `/health/db` | — | Confirma que el servidor está conectado a la base de datos |
-| POST | `/auth/register` | — | Crea una cuenta. Body: `{nombre, email, password, rol}`. Devuelve `{access_token, rol}` |
-| POST | `/auth/login` | — | Inicia sesión. Body: `{email, password}`. Devuelve `{access_token, rol}` |
-| GET | `/me` | cualquier usuario logueado | Devuelve los datos del usuario dueño del token |
+| POST | `/auth/registro` | — | Crea una cuenta. Body: `{nombre, email, password, rol}`. Devuelve `{access_token, rol}` |
+| POST | `/auth/inicio-sesion` | — | Inicia sesión. Body: `{email, password}`. Devuelve `{access_token, rol}` |
+| GET | `/perfil` | cualquier usuario logueado | Devuelve los datos del usuario dueño del token |
 | GET | `/medico/dashboard` | medico | Endpoint de ejemplo, solo accesible por médicos |
 | GET | `/admin/usuarios` | admin | Lista todos los usuarios registrados |
 | POST | `/sintomas` | paciente | Registra un síntoma. Body: `{descripcion}`. Devuelve `{id, descripcion}` |
