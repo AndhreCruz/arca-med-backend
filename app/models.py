@@ -3,6 +3,8 @@ from sqlalchemy.sql import func
 from sqlalchemy import Numeric
 from database import Base
 from pgvector.sqlalchemy import Vector
+from sqlalchemy import Boolean
+from sqlalchemy.dialects.postgresql import JSONB
 
 class Usuario(Base):
     __tablename__ = "usuarios"
@@ -53,4 +55,16 @@ class GuiaClinica(Base):
     titulo = Column(String(255), nullable=False)
     contenido = Column(Text, nullable=False)
     embedding = Column(Vector(1536))
+    creado_en = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Prediagnostico(Base):
+    __tablename__ = "prediagnosticos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"))
+    resumen_generado = Column(Text, nullable=False)
+    urgencia_sugerida = Column(String(20))
+    diagnosticos_diferenciales = Column(JSONB)
+    revisado_por_medico = Column(Boolean, default=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())

@@ -5,11 +5,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from database import get_db
-from models import Usuario, Sintoma, Documento, MetricaFisica, GuiaClinica
+from models import Usuario, Sintoma, Documento, MetricaFisica, GuiaClinica, Prediagnostico
 from schemas import UsuarioCreate, UsuarioLogin, Token, SintomaCreate, SintomaResponse, DocumentoResponse, MetricaCreate, MetricaResponse, GuiaClinicaCreate, GuiaClinicaResponse
 from auth import hash_password, verify_password, create_token
 from deps import get_current_user, require_role
-from embeddings import generar_embedding
+from embeddings import generar_embedding, buscar_guias_relevantes
+from anonimizar import anonimizar_texto
+from llm import generar_prediagnostico
 
 app = FastAPI()
 
@@ -73,6 +75,22 @@ def crear_sintoma(
     db.add(nuevo)
     db.commit()
     db.refresh(nuevo)
+
+    texto_seguro = anonimizar_texto(datos.descripcion)
+    guias = buscar_guias_relevantes(texto_seguro, db)
+    textos_guias = [g.contenido for g in guias]
+
+    resultado = generar_prediagnostico(texto_seguro, textos_guias)
+
+    nuevo_prediagnostico = Prediagnostico(
+        usuario_id=usuario_actual.id,
+        resumen_generado=resultado["resumen"],
+        urgencia_sugerida=resultado["urgencia_sugerida"],
+        diagnosticos_diferenciales=resultado["diagnosticos_diferenciales"],
+    )
+    db.add(nuevo_prediagnostico)
+    db.commit()
+
     return nuevo
 
 
