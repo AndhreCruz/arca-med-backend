@@ -2,19 +2,23 @@
 
 ## Sobre el proyecto
 
-**ARCA Med** es un sistema de **pre-consulta asistida por inteligencia artificial**, compuesto por una aplicación Android y una plataforma web, diseñado específicamente para el ámbito de **kinesiología y traumatología**.
+ARCA Med es un sistema de pre-consulta asistida por inteligencia artificial, compuesto por una aplicación Android (paciente) y una plataforma web (médico y administrador), diseñado específicamente para el ámbito de kinesiología y traumatología.
 
 El sistema permite al paciente, antes de su consulta presencial:
-
 - Registrar sus síntomas y antecedentes relevantes.
 - Subir documentos médicos previos.
 - Capturar su rango de movimiento articular mediante la cámara del celular.
 
-A partir de esta información, ARCA Med genera un **resumen clínico** y un **prediagnóstico sugerido mediante RAG (Retrieval-Augmented Generation) sobre guías clínicas**, que posteriormente es revisado por el profesional de salud desde un dashboard de triage antes de la atención presencial.
+A partir de esta información, ARCA Med genera automáticamente un resumen clínico y un prediagnóstico sugerido mediante RAG (Retrieval-Augmented Generation) sobre guías clínicas, que posteriormente es revisado por el profesional de salud desde un dashboard de triage antes de la atención presencial.
 
-El objetivo es **agilizar y enriquecer la consulta**, proporcionando al profesional información estructurada y antecedentes recopilados previamente.
+El objetivo es **apoyar y enriquecer** la consulta, entregando al profesional información estructurada y antecedentes recopilados previamente — nunca reemplazar su criterio clínico (el sistema es un CDSS: sugiere, no diagnostica).
 
-> Este repositorio corresponde al **backend de ARCA Med**.
+### Plataformas
+
+No es un sistema omnicanal (cada plataforma no ofrece lo mismo) — las funciones están repartidas según el rol:
+
+- **App (Android)** — exclusiva para el **paciente**: registro/login, carga de síntomas y documentos, captura de rango de movimiento por cámara.
+- **Web** — exclusiva para **médico** y **administrador**: el médico ve el dashboard de triage y los resúmenes/prediagnósticos; el administrador gestiona usuarios y guías clínicas.
 
 ## Cómo levantar el proyecto
 
@@ -38,7 +42,7 @@ pip install -r requirements.txt
 Antes de correr el backend, crea un archivo `.env` dentro de `app/` con:
 ```
 DATABASE_URL=postgresql://arca:arca123@localhost:5432/arcamed
-SECRET_KEY=cualquier-texto-largo-random
+SECRET_KEY=cualquier-texto
 ```
 
 Corre el servidor:
@@ -53,7 +57,7 @@ uvicorn main:app --reload
 
 La mayoría de los endpoints requieren estar logueado. El flujo general, sin importar la plataforma:
 
-1. Llamar a `POST /auth/register` o `POST /auth/login` → la API devuelve `{ "access_token": "...", "rol": "..." }`.
+1. Llamar a `POST /auth/registro` o `POST /auth/inicio-sesion` → la API devuelve `{ "access_token": "...", "rol": "..." }`.
 2. Guardar ese `access_token` localmente (no se pierde al cerrar la app/pestaña si se guarda bien).
 3. En **cada** petición a un endpoint protegido, agregar el header:
 
@@ -65,7 +69,7 @@ La mayoría de los endpoints requieren estar logueado. El flujo general, sin imp
 
 Guardar el token después del login (ej. en `localStorage`):
 ```js
-const res = await fetch("http://localhost:8000/auth/login", {
+const res = await fetch("http://localhost:8000/auth/inicio-sesion", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ email, password }),
@@ -78,7 +82,7 @@ Usarlo en peticiones posteriores:
 ```js
 const token = localStorage.getItem("token");
 
-const res = await fetch("http://localhost:8000/me", {
+const res = await fetch("http://localhost:8000/perfil", {
   headers: { Authorization: `Bearer ${token}` },
 });
 ```
@@ -88,10 +92,10 @@ const res = await fetch("http://localhost:8000/me", {
 Definir el header en la interfaz de Retrofit:
 ```kotlin
 interface ApiService {
-    @POST("auth/login")
+    @POST("auth/inicio-sesion")
     suspend fun login(@Body datos: LoginRequest): TokenResponse
 
-    @GET("me")
+    @GET("perfil")
     suspend fun getMe(@Header("Authorization") token: String): UsuarioResponse
 }
 ```
@@ -147,6 +151,10 @@ La API responde:
 | POST | `/sintomas` | paciente | Registra un síntoma. Body: `{descripcion}`. Devuelve `{id, descripcion}` |
 | POST | `/documentos` | paciente | Sube un documento (PDF/JPG/PNG, máx 10MB). Body: `multipart/form-data` con el archivo en el campo `archivo`. Devuelve `{id, nombre_archivo, ruta_archivo}` |
 | POST | `/metricas` | paciente | Registra una métrica de rango de movimiento. Body: `{articulacion, angulo_maximo, angulo_minimo}`. Devuelve `{id, articulacion, angulo_maximo, angulo_minimo}` |
+| POST | `/guias-clinicas` | admin | Carga una guía clínica (genera su embedding automáticamente). Body: `{titulo, contenido}`. Devuelve `{id, titulo}` |
+| GET | `/pacientes/triage` | medico | Lista pacientes con prediagnóstico pendiente de revisión, ordenados por urgencia (alta → media → baja) |
+| GET | `/pacientes/{id}/resumen` | medico | Devuelve el resumen generado por IA del paciente: resumen, diagnósticos diferenciales con probabilidad, urgencia sugerida y métricas físicas |
+| POST | `/pacientes/{id}/resumen/revisar` | medico | Marca el prediagnóstico del paciente como revisado. Body: `{revisado_por_medico: true}` |
 
 > Este listado se irá actualizando a medida que se agreguen más endpoints. Revisa también `API_CONTRACT.md` para ver el diseño completo planeado, incluyendo lo que aún no está implementado.
 
