@@ -160,4 +160,4 @@ La API responde:
 
 ## Roles válidos al registrarse
 
-El campo `rol` en `/auth/register` acepta exactamente: `paciente`, `medico`, o `admin`.
+El campo `rol` en `/auth/registro` acepta exactamente: `paciente`, `medico`, o `admin`.
