@@ -14,7 +14,6 @@ class Token(BaseModel):
     access_token: str
     rol: str
 
-
 class SintomaCreate(BaseModel):
     descripcion: str
 
@@ -25,7 +24,6 @@ class SintomaResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class DocumentoResponse(BaseModel):
     id: int
     nombre_archivo: str
@@ -33,7 +31,6 @@ class DocumentoResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 class MetricaCreate(BaseModel):
     articulacion: str
@@ -48,8 +45,7 @@ class MetricaResponse(BaseModel):
 
     class Config:
         from_attributes = True
-        
-        
+               
 class GuiaClinicaCreate(BaseModel):
     titulo: str
     contenido: str
@@ -60,3 +56,26 @@ class GuiaClinicaResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        
+class PacienteTriage(BaseModel):
+    usuario_id: int
+    nombre: str
+    urgencia_sugerida: str
+
+class MetricaResumen(BaseModel):
+    articulacion: str
+    angulo_maximo: float
+    angulo_minimo: float
+
+class ResumenPaciente(BaseModel):
+    resumen_generado: str
+    diagnosticos_diferenciales: list
+    urgencia_sugerida: str
+    metricas_fisicas: list[MetricaResumen]
+
+class RevisarRequest(BaseModel):
+    revisado_por_medico: bool
+
+class RevisarResponse(BaseModel):
+    id: int
+    revisado_por_medico: bool

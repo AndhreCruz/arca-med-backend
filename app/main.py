@@ -2,11 +2,11 @@ import os
 import uuid
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, case 
 from sqlalchemy.exc import IntegrityError
 from database import get_db
 from models import Usuario, Sintoma, Documento, MetricaFisica, GuiaClinica, Prediagnostico
-from schemas import UsuarioCreate, UsuarioLogin, Token, SintomaCreate, SintomaResponse, DocumentoResponse, MetricaCreate, MetricaResponse, GuiaClinicaCreate, GuiaClinicaResponse
+from schemas import UsuarioCreate, UsuarioLogin, Token, SintomaCreate, SintomaResponse, DocumentoResponse, MetricaCreate, MetricaResponse, GuiaClinicaCreate, GuiaClinicaResponse, PacienteTriage, ResumenPaciente, MetricaResumen, RevisarRequest, RevisarResponse
 from auth import hash_password, verify_password, create_token
 from deps import get_current_user, require_role
 from embeddings import generar_embedding, buscar_guias_relevantes
@@ -18,6 +18,12 @@ app = FastAPI()
 EXTENSIONES_PERMITIDAS = {".pdf", ".jpg", ".jpeg", ".png"}
 TAMANO_MAXIMO_MB = 10
 
+orden_urgencia = case(
+    (Prediagnostico.urgencia_sugerida == "alta", 1),
+    (Prediagnostico.urgencia_sugerida == "media", 2),
+    (Prediagnostico.urgencia_sugerida == "baja", 3),
+    else_=4
+)
 
 @app.post("/auth/registro", response_model=Token)
 def register(datos: UsuarioCreate, db: Session = Depends(get_db)):
@@ -160,3 +166,87 @@ def crear_guia_clinica(
     db.commit()
     db.refresh(nueva_guia)
     return nueva_guia
+
+
+@app.get("/pacientes/triage", response_model=list[PacienteTriage])
+def listar_triage(
+    usuario_actual: Usuario = Depends(require_role("medico")),
+    db: Session = Depends(get_db)
+):
+    resultados = (
+        db.query(Prediagnostico, Usuario.nombre)
+        .join(Usuario, Usuario.id == Prediagnostico.usuario_id)
+        .filter(Prediagnostico.revisado_por_medico == False)
+        .order_by(orden_urgencia)
+        .all()
+    )
+
+    return [
+        {
+            "usuario_id": p.usuario_id,
+            "nombre": nombre,
+            "urgencia_sugerida": p.urgencia_sugerida
+        }
+        for p, nombre in resultados
+    ]
+
+
+@app.get("/pacientes/{id}/resumen", response_model=ResumenPaciente)
+def ver_resumen_paciente(
+    id: int,
+    usuario_actual: Usuario = Depends(require_role("medico")),
+    db: Session = Depends(get_db)
+):
+    prediagnostico = (
+        db.query(Prediagnostico)
+        .filter(Prediagnostico.usuario_id == id)
+        .order_by(Prediagnostico.creado_en.desc())
+        .first()
+    )
+
+    if not prediagnostico:
+        raise HTTPException(
+            status_code=404,
+            detail="No hay prediagnostico para este paciente"
+        )
+
+    metricas = (
+        db.query(MetricaFisica)
+        .filter(MetricaFisica.usuario_id == id)
+        .all()
+    )
+
+    return {
+        "resumen_generado": prediagnostico.resumen_generado,
+        "diagnosticos_diferenciales": prediagnostico.diagnosticos_diferenciales,
+        "urgencia_sugerida": prediagnostico.urgencia_sugerida,
+        "metricas_fisicas": metricas,
+    }
+
+
+@app.post("/pacientes/{id}/resumen/revisar", response_model=RevisarResponse)
+def revisar_resumen(
+    id: int,
+    datos: RevisarRequest,
+    usuario_actual: Usuario = Depends(require_role("medico")),
+    db: Session = Depends(get_db)
+):
+    prediagnostico = (
+        db.query(Prediagnostico)
+        .filter(Prediagnostico.usuario_id == id)
+        .order_by(Prediagnostico.creado_en.desc())
+        .first()
+    )
+
+    if not prediagnostico:
+        raise HTTPException(
+            status_code=404,
+            detail="No hay prediagnostico para este paciente"
+        )
+
+    prediagnostico.revisado_por_medico = datos.revisado_por_medico
+
+    db.commit()
+    db.refresh(prediagnostico)
+
+    return prediagnostico
