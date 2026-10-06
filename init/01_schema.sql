@@ -34,6 +34,7 @@ CREATE TABLE metricas_fisicas (
     id SERIAL PRIMARY KEY,
     usuario_id INTEGER REFERENCES usuarios(id),
     articulacion VARCHAR(50) NOT NULL,
+    lado VARCHAR(10),
     angulo_maximo NUMERIC(5,2),
     angulo_minimo NUMERIC(5,2),
     medido_en TIMESTAMP DEFAULT NOW()
@@ -59,12 +60,13 @@ CREATE TABLE prediagnosticos (
     creado_en TIMESTAMP DEFAULT NOW()
 );
 
--- Ejercicios sugeridos al paciente
+-- Catálogo de ejercicios
 CREATE TABLE ejercicios_recomendados (
     id SERIAL PRIMARY KEY,
-    usuario_id INTEGER REFERENCES usuarios(id),
     nombre_ejercicio VARCHAR(150) NOT NULL,
     descripcion TEXT,
+    articulacion VARCHAR(50),
+    imagen_url VARCHAR(500),
     creado_en TIMESTAMP DEFAULT NOW()
 );
 

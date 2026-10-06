@@ -140,6 +140,7 @@ def crear_metrica(
     nueva = MetricaFisica(
         usuario_id=usuario_actual.id,
         articulacion=datos.articulacion,
+        lado=datos.lado,
         angulo_maximo=datos.angulo_maximo,
         angulo_minimo=datos.angulo_minimo,
     )

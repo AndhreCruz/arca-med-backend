@@ -46,6 +46,7 @@ class MetricaFisica(Base):
     angulo_maximo = Column(Numeric(5, 2))
     angulo_minimo = Column(Numeric(5, 2))
     medido_en = Column(DateTime(timezone=True), server_default=func.now())
+    lado = Column(String(10))
     
 
 class GuiaClinica(Base):
