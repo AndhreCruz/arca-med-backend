@@ -25,7 +25,7 @@ No es un sistema omnicanal (cada plataforma no ofrece lo mismo) — las funcione
 Requisitos: [Docker Desktop](https://www.docker.com/products/docker-desktop/) y Python 3.11+.
 
 ```bash
-git clone https://github.com/AndhreCruz/arca-med-backend.git
+git clone <URL_DEL_REPO>
 cd arca-med-backend
 
 # 1. Levantar la base de datos
@@ -34,15 +34,23 @@ docker compose up -d
 # 2. Levantar el backend
 cd app
 python -m venv venv
-venv\Scripts\activate
+venv\Scripts\activate       
 
 pip install -r requirements.txt
 ```
 
-Antes de correr el backend, crea un archivo `.env` dentro de `app/` con:
+Antes de correr el backend, crea un archivo `.env` dentro de `app/` (no viene en el repo) con:
 ```
 DATABASE_URL=postgresql://arca:arca123@localhost:5432/arcamed
-SECRET_KEY=cualquier-texto
+SECRET_KEY=cualquier-texto-largo-random
+OPENAI_API_KEY=sk-...
+```
+
+> `OPENAI_API_KEY` es una credencial real que cuesta dinero: pídela por un canal privado del equipo. **Nunca** la subas al repo ni la pegues en este README.
+
+Genera los embeddings de las guías clínicas (solo la primera vez, o cuando se agreguen guías por SQL):
+```bash
+python generar_embeddings_guias.py
 ```
 
 Corre el servidor:
@@ -60,7 +68,6 @@ La mayoría de los endpoints requieren estar logueado. El flujo general, sin imp
 1. Llamar a `POST /auth/registro` o `POST /auth/inicio-sesion` → la API devuelve `{ "access_token": "...", "rol": "..." }`.
 2. Guardar ese `access_token` localmente (no se pierde al cerrar la app/pestaña si se guarda bien).
 3. En **cada** petición a un endpoint protegido, agregar el header:
-
    ```
    Authorization: Bearer <access_token>
    ```
@@ -150,14 +157,64 @@ La API responde:
 | GET | `/admin/usuarios` | admin | Lista todos los usuarios registrados |
 | POST | `/sintomas` | paciente | Registra un síntoma. Body: `{descripcion}`. Devuelve `{id, descripcion}` |
 | POST | `/documentos` | paciente | Sube un documento (PDF/JPG/PNG, máx 10MB). Body: `multipart/form-data` con el archivo en el campo `archivo`. Devuelve `{id, nombre_archivo, ruta_archivo}` |
-| POST | `/metricas` | paciente | Registra una métrica de rango de movimiento. Body: `{articulacion, angulo_maximo, angulo_minimo}`. Devuelve `{id, articulacion, angulo_maximo, angulo_minimo}` |
+| POST | `/metricas` | paciente | Registra una métrica de rango de movimiento. Body: `{articulacion, lado, angulo_maximo, angulo_minimo}` (ver reglas de articulaciones abajo). Devuelve `{id, articulacion, lado, angulo_maximo, angulo_minimo}` |
 | POST | `/guias-clinicas` | admin | Carga una guía clínica (genera su embedding automáticamente). Body: `{titulo, contenido}`. Devuelve `{id, titulo}` |
 | GET | `/pacientes/triage` | medico | Lista pacientes con prediagnóstico pendiente de revisión, ordenados por urgencia (alta → media → baja) |
 | GET | `/pacientes/{id}/resumen` | medico | Devuelve el resumen generado por IA del paciente: resumen, diagnósticos diferenciales con probabilidad, urgencia sugerida y métricas físicas |
 | POST | `/pacientes/{id}/resumen/revisar` | medico | Marca el prediagnóstico del paciente como revisado. Body: `{revisado_por_medico: true}` |
+| POST | `/ejercicios` | admin | Crea un ejercicio del catálogo. Body: `{nombre_ejercicio, descripcion, articulacion}`. Devuelve el ejercicio creado |
+| POST | `/ejercicios/{id}/imagen` | admin | Sube o reemplaza la imagen del ejercicio (JPG/PNG, `multipart/form-data`, campo `archivo`). Devuelve el ejercicio con `imagen_url` |
+| GET | `/ejercicios` | paciente, admin | Lista el catálogo. Filtro opcional: `?articulacion=rodilla`. Devuelve `[{id, nombre_ejercicio, descripcion, articulacion, imagen_url}]` |
+| POST | `/ejercicios/{id}/ejecucion` | paciente | Registra que el paciente realizó el ejercicio. Body: `{correcto, comentario}` (comentario opcional). Devuelve `{id, ejercicio_id, correcto, comentario}` |
 
-> Este listado se irá actualizando a medida que se agreguen más endpoints. Revisa también `API_CONTRACT.md` para ver el diseño completo planeado, incluyendo lo que aún no está implementado.
+### Mostrar imágenes de ejercicios
+
+`imagen_url` es una ruta relativa (ej. `/static/ejercicios/abc.png`). Para mostrarla, anteponer la dirección del servidor: `http://localhost:8000` + `imagen_url`. Estas imágenes son públicas y no requieren token.
 
 ## Roles válidos al registrarse
 
 El campo `rol` en `/auth/registro` acepta exactamente: `paciente`, `medico`, o `admin`.
+
+## Articulaciones válidas
+
+Se usan los mismos valores en `/metricas` y en `/ejercicios`:
+
+`rodilla`, `tobillo`, `hombro`, `codo`, `muneca`, `cadera`, `cervical`, `lumbar`
+
+Reglas para `/metricas`:
+- Articulaciones con dos lados (todas menos `cervical` y `lumbar`): `lado` es **obligatorio** y debe ser `izquierdo` o `derecho`.
+- `cervical` y `lumbar`: **no** se envía `lado`.
+- `angulo_minimo` no puede ser mayor que `angulo_maximo`.
+
+Si alguna regla no se cumple, la API responde `422` con el detalle del error. En `/ejercicios` no existe `lado`: un mismo ejercicio sirve para ambos lados.
+
+## Datos iniciales
+
+Al levantar la base por primera vez, los scripts de `init/` se ejecutan en orden y cargan:
+
+| Archivo | Contenido |
+|---|---|
+| `01_schema.sql` | Estructura de todas las tablas |
+| `02_usuarios.sql` | 10 usuarios de prueba |
+| `03_guias_clinicas.sql` | 16 guías clínicas de kinesiología/traumatología (sin embedding; ver abajo) |
+| `04_ejercicios.sql` | 29 ejercicios (3-4 por articulación, sin imagen) |
+
+Las guías se cargan con `embedding` vacío porque un SQL no puede llamar a OpenAI. Después de levantar la base, ejecutar una vez `python generar_embeddings_guias.py` (dentro de `app/`). Sin este paso, el prediagnóstico no encuentra guías relevantes.
+
+**Importante:** los scripts de `init/` solo se ejecutan cuando el volumen de la base se crea desde cero. Si ya tenías la base levantada y quieres cargar los datos iniciales:
+```bash
+docker compose down -v   # borra la base local, incluidos tus datos de prueba
+docker compose up -d
+```
+
+### Usuarios de prueba
+
+Contraseña de todos: **`Arcamed2026`** (solo para desarrollo local).
+
+| Rol | Email |
+|---|---|
+| admin | `admin@arcamed.com`, `soporte@arcamed.com` |
+| medico | `camila.rojas@arcamed.com`, `matias.fuentes@arcamed.com`, `valentina.soto@arcamed.com` |
+| paciente | `juan.perez@arcamed.com`, `maria.gonzalez@arcamed.com`, `diego.munoz@arcamed.com`, `fernanda.silva@arcamed.com`, `tomas.contreras@arcamed.com` |
+
+> El contenido de las guías clínicas y del catálogo de ejercicios fue redactado con fines académicos y de demostración. No es material clínico validado.
