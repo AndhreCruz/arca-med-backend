@@ -1,6 +1,5 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
 from typing import Optional
-from pydantic import model_validator
 from constantes import ARTICULACIONES_VALIDAS, ARTICULACIONES_SIN_LADO, LADOS_VALIDOS
 
 class UsuarioCreate(BaseModel):
@@ -108,3 +107,41 @@ class RevisarRequest(BaseModel):
 class RevisarResponse(BaseModel):
     id: int
     revisado_por_medico: bool
+
+class EjercicioCreate(BaseModel):
+    nombre_ejercicio: str
+    descripcion: Optional[str] = None
+    articulacion: str
+
+    @field_validator("articulacion")
+    @classmethod
+    def validar_articulacion(cls, v):
+        if v not in ARTICULACIONES_VALIDAS:
+            raise ValueError(f"Articulacion invalida. Opciones: {ARTICULACIONES_VALIDAS}")
+        return v
+
+
+class EjercicioResponse(BaseModel):
+    id: int
+    nombre_ejercicio: str
+    descripcion: Optional[str] = None
+    articulacion: str
+    imagen_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class EjecucionCreate(BaseModel):
+    correcto: bool
+    comentario: Optional[str] = None
+
+
+class EjecucionResponse(BaseModel):
+    id: int
+    ejercicio_id: int
+    correcto: bool
+    comentario: Optional[str] = None
+
+    class Config:
+        from_attributes = True

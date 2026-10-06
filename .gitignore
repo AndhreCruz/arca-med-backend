@@ -3,5 +3,9 @@ __pycache__/
 *.pyc
 .env
 .vscode/
+
 app/uploads/*
 !app/uploads/.gitkeep
+
+app/static/ejercicios/*
+!app/static/ejercicios/.gitkeep

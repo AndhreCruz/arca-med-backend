@@ -1,9 +1,7 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Numeric, Boolean
 from sqlalchemy.sql import func
-from sqlalchemy import Numeric
 from database import Base
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 
 class Usuario(Base):
@@ -69,3 +67,25 @@ class Prediagnostico(Base):
     diagnosticos_diferenciales = Column(JSONB)
     revisado_por_medico = Column(Boolean, default=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class EjercicioRecomendado(Base):
+    __tablename__ = "ejercicios_recomendados"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre_ejercicio = Column(String(150), nullable=False)
+    descripcion = Column(Text)
+    articulacion = Column(String(50))
+    imagen_url = Column(String(500))
+    creado_en = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class EjecucionEjercicio(Base):
+    __tablename__ = "ejecuciones_ejercicio"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ejercicio_id = Column(Integer, ForeignKey("ejercicios_recomendados.id"))
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"))
+    correcto = Column(Boolean)
+    comentario = Column(Text)
+    ejecutado_en = Column(DateTime(timezone=True), server_default=func.now())

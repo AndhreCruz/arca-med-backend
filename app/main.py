@@ -1,19 +1,27 @@
 import os
 import uuid
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query 
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import text, case 
 from sqlalchemy.exc import IntegrityError
 from database import get_db
-from models import Usuario, Sintoma, Documento, MetricaFisica, GuiaClinica, Prediagnostico
-from schemas import UsuarioCreate, UsuarioLogin, Token, SintomaCreate, SintomaResponse, DocumentoResponse, MetricaCreate, MetricaResponse, GuiaClinicaCreate, GuiaClinicaResponse, PacienteTriage, ResumenPaciente, MetricaResumen, RevisarRequest, RevisarResponse
+from models import Usuario, Sintoma, Documento, MetricaFisica, GuiaClinica, Prediagnostico, EjercicioRecomendado, EjecucionEjercicio
+from schemas import UsuarioCreate, UsuarioLogin, Token, SintomaCreate, SintomaResponse, DocumentoResponse, MetricaCreate, MetricaResponse, GuiaClinicaCreate, GuiaClinicaResponse, PacienteTriage, ResumenPaciente, MetricaResumen, RevisarRequest, RevisarResponse, EjercicioCreate, EjercicioResponse, EjecucionCreate, EjecucionResponse
 from auth import hash_password, verify_password, create_token
 from deps import get_current_user, require_role
 from embeddings import generar_embedding, buscar_guias_relevantes
 from anonimizar import anonimizar_texto
 from llm import generar_prediagnostico
+from typing import Optional
+from constantes import ARTICULACIONES_VALIDAS
 
 app = FastAPI()
+
+os.makedirs("static/ejercicios", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+EXTENSIONES_IMAGEN = {".jpg", ".jpeg", ".png"}
 
 EXTENSIONES_PERMITIDAS = {".pdf", ".jpg", ".jpeg", ".png"}
 TAMANO_MAXIMO_MB = 10
@@ -251,3 +259,91 @@ def revisar_resumen(
     db.refresh(prediagnostico)
 
     return prediagnostico
+
+
+@app.post("/ejercicios", response_model=EjercicioResponse)
+def crear_ejercicio(
+    datos: EjercicioCreate,
+    usuario_actual: Usuario = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    nuevo = EjercicioRecomendado(
+        nombre_ejercicio=datos.nombre_ejercicio,
+        descripcion=datos.descripcion,
+        articulacion=datos.articulacion,
+    )
+    db.add(nuevo)
+    db.commit()
+    db.refresh(nuevo)
+    return nuevo
+
+
+@app.post("/ejercicios/{id}/imagen", response_model=EjercicioResponse)
+def subir_imagen_ejercicio(
+    id: int,
+    archivo: UploadFile = File(...),
+    usuario_actual: Usuario = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    ejercicio = db.query(EjercicioRecomendado).filter(EjercicioRecomendado.id == id).first()
+    if not ejercicio:
+        raise HTTPException(status_code=404, detail="Ejercicio no encontrado")
+
+    extension = os.path.splitext(archivo.filename)[1].lower()
+    if extension not in EXTENSIONES_IMAGEN:
+        raise HTTPException(status_code=400, detail="Solo se permiten imagenes JPG o PNG")
+
+    contenido = archivo.file.read()
+    if len(contenido) > TAMANO_MAXIMO_MB * 1024 * 1024:
+        raise HTTPException(status_code=400, detail=f"La imagen supera los {TAMANO_MAXIMO_MB}MB")
+
+    if ejercicio.imagen_url:
+        ruta_anterior = ejercicio.imagen_url.lstrip("/")
+        if os.path.exists(ruta_anterior):
+            os.remove(ruta_anterior)
+
+    nombre_unico = f"{uuid.uuid4()}{extension}"
+    with open(f"static/ejercicios/{nombre_unico}", "wb") as f:
+        f.write(contenido)
+
+    ejercicio.imagen_url = f"/static/ejercicios/{nombre_unico}"
+    db.commit()
+    db.refresh(ejercicio)
+    return ejercicio
+
+
+@app.get("/ejercicios", response_model=list[EjercicioResponse])
+def listar_ejercicios(
+    articulacion: Optional[str] = Query(None),
+    usuario_actual: Usuario = Depends(require_role("paciente", "admin")),
+    db: Session = Depends(get_db)
+):
+    consulta = db.query(EjercicioRecomendado)
+    if articulacion:
+        if articulacion not in ARTICULACIONES_VALIDAS:
+            raise HTTPException(status_code=400, detail=f"Articulacion invalida. Opciones: {ARTICULACIONES_VALIDAS}")
+        consulta = consulta.filter(EjercicioRecomendado.articulacion == articulacion)
+    return consulta.order_by(EjercicioRecomendado.nombre_ejercicio).all()
+
+
+@app.post("/ejercicios/{id}/ejecucion", response_model=EjecucionResponse)
+def registrar_ejecucion(
+    id: int,
+    datos: EjecucionCreate,
+    usuario_actual: Usuario = Depends(require_role("paciente")),
+    db: Session = Depends(get_db)
+):
+    ejercicio = db.query(EjercicioRecomendado).filter(EjercicioRecomendado.id == id).first()
+    if not ejercicio:
+        raise HTTPException(status_code=404, detail="Ejercicio no encontrado")
+
+    ejecucion = EjecucionEjercicio(
+        ejercicio_id=id,
+        usuario_id=usuario_actual.id,
+        correcto=datos.correcto,
+        comentario=datos.comentario,
+    )
+    db.add(ejecucion)
+    db.commit()
+    db.refresh(ejecucion)
+    return ejecucion
