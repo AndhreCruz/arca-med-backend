@@ -1,23 +1,65 @@
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
-from typing import Optional
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from typing import Literal, Optional
 from constantes import ARTICULACIONES_VALIDAS, ARTICULACIONES_SIN_LADO, LADOS_VALIDOS
 
-class UsuarioCreate(BaseModel):
-    nombre: str
+Rol = Literal["paciente", "medico", "admin"]
+
+def validar_password(password: str) -> str:
+    if len(password) < 8:
+        raise ValueError("La contraseña debe tener al menos 8 caracteres")
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError("La contraseña es demasiado larga")
+    return password
+
+
+class RegistroPaciente(BaseModel):
+    nombre: str = Field(min_length=1, max_length=150)
     email: EmailStr
     password: str
-    rol: str
+
+    @field_validator("email")
+    @classmethod
+    def normalizar_email(cls, v):
+        return v.lower()
+
+    @field_validator("password")
+    @classmethod
+    def revisar_password(cls, v):
+        return validar_password(v)
+
+
+class UsuarioCreateAdmin(RegistroPaciente):
+    rol: Rol
+
 
 class UsuarioLogin(BaseModel):
     email: EmailStr
     password: str
 
+    @field_validator("email")
+    @classmethod
+    def normalizar_email(cls, v):
+        return v.lower()
+
+
+class UsuarioResponse(BaseModel):
+    id: int
+    nombre: str
+    email: str
+    rol: str
+
+    class Config:
+        from_attributes = True
+
+
 class Token(BaseModel):
     access_token: str
     rol: str
 
+
 class SintomaCreate(BaseModel):
     descripcion: str
+
 
 class SintomaResponse(BaseModel):
     id: int
@@ -26,6 +68,7 @@ class SintomaResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class DocumentoResponse(BaseModel):
     id: int
     nombre_archivo: str
@@ -33,6 +76,7 @@ class DocumentoResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class MetricaCreate(BaseModel):
     articulacion: str
@@ -73,10 +117,12 @@ class MetricaResumen(BaseModel):
     lado: Optional[str] = None
     angulo_maximo: float
     angulo_minimo: float
-               
+
+
 class GuiaClinicaCreate(BaseModel):
     titulo: str
     contenido: str
+
 
 class GuiaClinicaResponse(BaseModel):
     id: int
@@ -84,16 +130,19 @@ class GuiaClinicaResponse(BaseModel):
 
     class Config:
         from_attributes = True
-        
+
+
 class PacienteTriage(BaseModel):
     usuario_id: int
     nombre: str
     urgencia_sugerida: str
 
+
 class MetricaResumen(BaseModel):
     articulacion: str
     angulo_maximo: float
     angulo_minimo: float
+
 
 class ResumenPaciente(BaseModel):
     resumen_generado: str
@@ -101,12 +150,15 @@ class ResumenPaciente(BaseModel):
     urgencia_sugerida: str
     metricas_fisicas: list[MetricaResumen]
 
+
 class RevisarRequest(BaseModel):
     revisado_por_medico: bool
+
 
 class RevisarResponse(BaseModel):
     id: int
     revisado_por_medico: bool
+
 
 class EjercicioCreate(BaseModel):
     nombre_ejercicio: str

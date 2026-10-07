@@ -150,11 +150,12 @@ La API responde:
 
 | Método | Ruta | Rol requerido | Descripción |
 |---|---|---|---|
-| POST | `/auth/registro` | — | Crea una cuenta. Body: `{nombre, email, password, rol}`. Devuelve `{access_token, rol}` |
+| POST | `/auth/registro` | — | Crea una cuenta de **paciente** (el rol no se elige). Body: `{nombre, email, password}`. Devuelve `{access_token, rol}` |
 | POST | `/auth/inicio-sesion` | — | Inicia sesión. Body: `{email, password}`. Devuelve `{access_token, rol}` |
 | GET | `/perfil` | cualquier usuario logueado | Devuelve los datos del usuario dueño del token |
 | GET | `/medico/dashboard` | medico | Endpoint de ejemplo, solo accesible por médicos |
 | GET | `/admin/usuarios` | admin | Lista todos los usuarios registrados |
+| POST | `/admin/usuarios` | admin | Crea un usuario de cualquier rol. Body: `{nombre, email, password, rol}`. Devuelve `{id, nombre, email, rol}` |
 | POST | `/sintomas` | paciente | Registra un síntoma. Body: `{descripcion}`. Devuelve `{id, descripcion}` |
 | POST | `/documentos` | paciente | Sube un documento (PDF/JPG/PNG, máx 10MB). Body: `multipart/form-data` con el archivo en el campo `archivo`. Devuelve `{id, nombre_archivo, ruta_archivo}` |
 | POST | `/metricas` | paciente | Registra una métrica de rango de movimiento. Body: `{articulacion, lado, angulo_maximo, angulo_minimo}` (ver reglas de articulaciones abajo). Devuelve `{id, articulacion, lado, angulo_maximo, angulo_minimo}` |
@@ -171,9 +172,12 @@ La API responde:
 
 `imagen_url` es una ruta relativa (ej. `/static/ejercicios/abc.png`). Para mostrarla, anteponer la dirección del servidor: `http://localhost:8000` + `imagen_url`. Estas imágenes son públicas y no requieren token.
 
-## Roles válidos al registrarse
+## Registro y creación de usuarios
 
-El campo `rol` en `/auth/registro` acepta exactamente: `paciente`, `medico`, o `admin`.
+- El registro público (`/auth/registro`, usado por la app) **siempre crea pacientes**.
+- Médicos y administradores los crea un admin con `POST /admin/usuarios`, indicando `rol`: `paciente`, `medico` o `admin`.
+- Contraseña: mínimo 8 caracteres.
+- El email se guarda en minúsculas, así que el login no distingue mayúsculas.
 
 ## Articulaciones válidas
 

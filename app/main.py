@@ -19,7 +19,8 @@ from models import (
     Prediagnostico, EjercicioRecomendado, EjecucionEjercicio,
 )
 from schemas import (
-    UsuarioCreate, UsuarioLogin, Token,
+    RegistroPaciente, UsuarioCreateAdmin, 
+    UsuarioResponse, UsuarioLogin, Token,
     SintomaCreate, SintomaResponse,
     DocumentoResponse,
     MetricaCreate, MetricaResponse,
@@ -70,24 +71,29 @@ orden_urgencia = case(
     else_=4
 )
 
-@app.post("/auth/registro", response_model=Token)
-def register(datos: UsuarioCreate, db: Session = Depends(get_db)):
-    nuevo_usuario = Usuario(
-        nombre=datos.nombre,
-        email=datos.email,
-        password_hash=hash_password(datos.password),
-        rol=datos.rol,
+def crear_usuario(db: Session, nombre: str, email: str, password: str, rol: str) -> Usuario:
+    usuario = Usuario(
+        nombre=nombre,
+        email=email,
+        password_hash=hash_password(password),
+        rol=rol,
     )
-    db.add(nuevo_usuario)
+    db.add(usuario)
     try:
         db.commit()
-        db.refresh(nuevo_usuario)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Ese email ya está registrado")
+    db.refresh(usuario)
+    return usuario
 
-    token = create_token(nuevo_usuario.id, nuevo_usuario.rol)
-    return {"access_token": token, "rol": nuevo_usuario.rol}
+@app.post("/auth/registro", response_model=Token)
+def registro(datos: RegistroPaciente, db: Session = Depends(get_db)):
+    # El registro publico siempre crea pacientes.
+    # Medicos y admins los crea un admin con POST /admin/usuarios.
+    usuario = crear_usuario(db, datos.nombre, datos.email, datos.password, rol="paciente")
+    token = create_token(usuario.id, usuario.rol)
+    return {"access_token": token, "rol": usuario.rol}
 
 
 @app.post("/auth/inicio-sesion", response_model=Token)
@@ -114,6 +120,15 @@ def dashboard_medico(usuario_actual: Usuario = Depends(require_role("medico"))):
 def listar_usuarios(usuario_actual: Usuario = Depends(require_role("admin")), db: Session = Depends(get_db)):
     usuarios = db.query(Usuario).all()
     return [{"id": u.id, "nombre": u.nombre, "email": u.email, "rol": u.rol} for u in usuarios]
+
+
+@app.post("/admin/usuarios", response_model=UsuarioResponse)
+def crear_usuario_admin(
+    datos: UsuarioCreateAdmin,
+    usuario_actual: Usuario = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    return crear_usuario(db, datos.nombre, datos.email, datos.password, datos.rol)
 
 
 @app.post("/sintomas", response_model=SintomaResponse)
