@@ -1,6 +1,7 @@
 import os
 import uuid
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query 
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import text, case 
@@ -17,6 +18,17 @@ from typing import Optional
 from constantes import ARTICULACIONES_VALIDAS
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 os.makedirs("static/ejercicios", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
