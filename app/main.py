@@ -1,28 +1,65 @@
 import os
 import uuid
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query 
+from typing import Optional
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
-from sqlalchemy import text, case 
+from sqlalchemy import text, case
 from sqlalchemy.exc import IntegrityError
+
 from database import get_db
-from models import Usuario, Sintoma, Documento, MetricaFisica, GuiaClinica, Prediagnostico, EjercicioRecomendado, EjecucionEjercicio
-from schemas import UsuarioCreate, UsuarioLogin, Token, SintomaCreate, SintomaResponse, DocumentoResponse, MetricaCreate, MetricaResponse, GuiaClinicaCreate, GuiaClinicaResponse, PacienteTriage, ResumenPaciente, MetricaResumen, RevisarRequest, RevisarResponse, EjercicioCreate, EjercicioResponse, EjecucionCreate, EjecucionResponse
+from models import (
+    Usuario, Sintoma, Documento, MetricaFisica, GuiaClinica,
+    Prediagnostico, EjercicioRecomendado, EjecucionEjercicio,
+)
+from schemas import (
+    UsuarioCreate, UsuarioLogin, Token,
+    SintomaCreate, SintomaResponse,
+    DocumentoResponse,
+    MetricaCreate, MetricaResponse,
+    GuiaClinicaCreate, GuiaClinicaResponse,
+    PacienteTriage, ResumenPaciente, MetricaResumen,
+    RevisarRequest, RevisarResponse,
+    EjercicioCreate, EjercicioResponse,
+    EjecucionCreate, EjecucionResponse,
+)
 from auth import hash_password, verify_password, create_token
 from deps import get_current_user, require_role
 from embeddings import generar_embedding, buscar_guias_relevantes
 from anonimizar import anonimizar_texto
 from llm import generar_prediagnostico
-from typing import Optional
 from constantes import ARTICULACIONES_VALIDAS
 
 app = FastAPI()
 
+# --- CORS: origenes permitidos para la web, configurables en el .env ---
+ORIGENES_POR_DEFECTO = "http://localhost:5173,http://127.0.0.1:5173"
+
+origenes_permitidos = [
+    origen.strip()
+    for origen in os.getenv("CORS_ORIGINS", ORIGENES_POR_DEFECTO).split(",")
+    if origen.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origenes_permitidos,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Archivos estaticos publicos (solo imagenes de ejercicios) ---
 os.makedirs("static/ejercicios", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# --- Constantes ---
 EXTENSIONES_IMAGEN = {".jpg", ".jpeg", ".png"}
-
 EXTENSIONES_PERMITIDAS = {".pdf", ".jpg", ".jpeg", ".png"}
 TAMANO_MAXIMO_MB = 10
 
