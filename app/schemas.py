@@ -31,6 +31,23 @@ class RegistroPaciente(BaseModel):
 class UsuarioCreateAdmin(RegistroPaciente):
     rol: Rol
 
+class UsuarioUpdateAdmin(BaseModel):
+    nombre: Optional[str] = Field(default=None, min_length=1, max_length=150)
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    rol: Optional[Rol] = None
+    activo: Optional[bool] = None
+
+    @field_validator("email")
+    @classmethod
+    def normalizar_email(cls, v):
+        return v.lower() if v is not None else v
+
+    @field_validator("password")
+    @classmethod
+    def revisar_password(cls, v):
+        return validar_password(v) if v is not None else v
+
 
 class UsuarioLogin(BaseModel):
     email: EmailStr
@@ -47,6 +64,7 @@ class UsuarioResponse(BaseModel):
     nombre: str
     email: str
     rol: str
+    activo: bool
 
     class Config:
         from_attributes = True

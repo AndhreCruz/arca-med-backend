@@ -13,6 +13,7 @@ class Usuario(Base):
     password_hash = Column(String(255), nullable=False)
     rol = Column(String(20), nullable=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
+    activo = Column(Boolean, nullable=False, default=True)
 
 
 class Sintoma(Base):

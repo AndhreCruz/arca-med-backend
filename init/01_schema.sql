@@ -9,6 +9,7 @@ CREATE TABLE usuarios (
     password_hash VARCHAR(255) NOT NULL,
     rol VARCHAR(20) NOT NULL CHECK (rol IN ('paciente', 'medico', 'admin')),
     creado_en TIMESTAMP DEFAULT NOW()
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
 );
 
 -- Síntomas ingresados por el paciente (texto libre)

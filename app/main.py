@@ -19,10 +19,10 @@ from models import (
     Prediagnostico, EjercicioRecomendado, EjecucionEjercicio,
 )
 from schemas import (
-    RegistroPaciente, UsuarioCreateAdmin, 
-    UsuarioResponse, UsuarioLogin, Token,
-    SintomaCreate, SintomaResponse,
-    DocumentoResponse,
+    RegistroPaciente, UsuarioCreateAdmin,
+    UsuarioUpdateAdmin, UsuarioResponse, 
+    UsuarioLogin, Rol, Token, SintomaCreate, 
+    SintomaResponse, DocumentoResponse,
     MetricaCreate, MetricaResponse,
     GuiaClinicaCreate, GuiaClinicaResponse,
     PacienteTriage, ResumenPaciente, MetricaResumen,
@@ -102,6 +102,9 @@ def login(datos: UsuarioLogin, db: Session = Depends(get_db)):
     if not usuario or not verify_password(datos.password, usuario.password_hash):
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
 
+    if not usuario.activo:
+        raise HTTPException(status_code=403, detail="Cuenta desactivada. Contacta al administrador")
+
     token = create_token(usuario.id, usuario.rol)
     return {"access_token": token, "rol": usuario.rol}
 
@@ -116,10 +119,16 @@ def dashboard_medico(usuario_actual: Usuario = Depends(require_role("medico"))):
     return {"mensaje": f"Bienvenido doctor(a) {usuario_actual.nombre}"}
 
 
-@app.get("/admin/usuarios")
-def listar_usuarios(usuario_actual: Usuario = Depends(require_role("admin")), db: Session = Depends(get_db)):
-    usuarios = db.query(Usuario).all()
-    return [{"id": u.id, "nombre": u.nombre, "email": u.email, "rol": u.rol} for u in usuarios]
+@app.get("/admin/usuarios", response_model=list[UsuarioResponse])
+def listar_usuarios(
+    rol: Optional[Rol] = Query(None),
+    usuario_actual: Usuario = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    consulta = db.query(Usuario)
+    if rol:
+        consulta = consulta.filter(Usuario.rol == rol)
+    return consulta.order_by(Usuario.id).all()
 
 
 @app.post("/admin/usuarios", response_model=UsuarioResponse)
@@ -129,6 +138,50 @@ def crear_usuario_admin(
     db: Session = Depends(get_db)
 ):
     return crear_usuario(db, datos.nombre, datos.email, datos.password, datos.rol)
+
+
+@app.get("/admin/usuarios/{id}", response_model=UsuarioResponse)
+def ver_usuario(
+    id: int,
+    usuario_actual: Usuario = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    usuario = db.query(Usuario).filter(Usuario.id == id).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return usuario
+
+
+@app.patch("/admin/usuarios/{id}", response_model=UsuarioResponse)
+def editar_usuario(
+    id: int,
+    datos: UsuarioUpdateAdmin,
+    usuario_actual: Usuario = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    usuario = db.query(Usuario).filter(Usuario.id == id).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    cambios = datos.model_dump(exclude_unset=True, exclude_none=True)
+
+    if usuario.id == usuario_actual.id and ("rol" in cambios or "activo" in cambios):
+        raise HTTPException(status_code=400, detail="No puedes cambiar tu propio rol ni desactivar tu propia cuenta")
+
+    if "password" in cambios:
+        usuario.password_hash = hash_password(cambios.pop("password"))
+
+    for campo, valor in cambios.items():
+        setattr(usuario, campo, valor)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Ese email ya está registrado")
+
+    db.refresh(usuario)
+    return usuario
 
 
 @app.post("/sintomas", response_model=SintomaResponse)

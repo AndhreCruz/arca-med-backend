@@ -23,7 +23,7 @@ def get_current_user(
         raise credenciales_invalidas
 
     usuario = db.query(Usuario).filter(Usuario.id == int(usuario_id)).first()
-    if usuario is None:
+    if usuario is None or not usuario.activo:
         raise credenciales_invalidas
     return usuario
 
