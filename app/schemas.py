@@ -97,6 +97,16 @@ class SintomaDetalle(BaseModel):
         from_attributes = True
 
 
+class GuiaClinicaDetalle(BaseModel):
+    id: int
+    titulo: str
+    contenido: str
+    creado_en: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class DocumentoDetalle(BaseModel):
     id: int
     nombre_archivo: str

@@ -26,7 +26,7 @@ from schemas import (
     SintomaResponse, DocumentoResponse,
     SintomaDetalle, DocumentoDetalle,
     MetricaCreate, MetricaResponse,
-    GuiaClinicaCreate, GuiaClinicaResponse,
+    GuiaClinicaCreate, GuiaClinicaResponse, GuiaClinicaDetalle,
     PacienteTriage, ResumenPaciente, MetricaResumen,
     RevisarRequest, RevisarResponse,
     EjercicioCreate, EjercicioResponse,
@@ -294,6 +294,14 @@ def crear_guia_clinica(
     db.commit()
     db.refresh(nueva_guia)
     return nueva_guia
+
+
+@app.get("/guias-clinicas", response_model=list[GuiaClinicaDetalle])
+def listar_guias_clinicas(
+    usuario_actual: Usuario = Depends(require_role("admin", "medico")),
+    db: Session = Depends(get_db)
+):
+    return db.query(GuiaClinica).order_by(GuiaClinica.titulo).all()
 
 
 @app.get("/pacientes/triage", response_model=list[PacienteTriage])
