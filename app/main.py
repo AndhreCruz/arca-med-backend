@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -37,6 +37,7 @@ from deps import get_current_user, require_role
 from embeddings import generar_embedding, buscar_guias_relevantes
 from anonimizar import anonimizar_texto
 from llm import generar_prediagnostico
+from pipeline import generar_prediagnostico_en_segundo_plano
 from constantes import ARTICULACIONES_VALIDAS
 
 app = FastAPI()
@@ -201,6 +202,7 @@ def editar_usuario(
 @app.post("/sintomas", response_model=SintomaResponse)
 def crear_sintoma(
     datos: SintomaCreate,
+    background_tasks: BackgroundTasks,
     usuario_actual: Usuario = Depends(require_role("paciente")),
     db: Session = Depends(get_db)
 ):
@@ -209,21 +211,11 @@ def crear_sintoma(
     db.commit()
     db.refresh(nuevo)
 
-    texto_seguro = anonimizar_texto(datos.descripcion)
-    guias = buscar_guias_relevantes(texto_seguro, db)
-    textos_guias = [g.contenido for g in guias]
-
-    resultado = generar_prediagnostico(texto_seguro, textos_guias)
-
-    nuevo_prediagnostico = Prediagnostico(
-        usuario_id=usuario_actual.id,
-        resumen_generado=resultado["resumen"],
-        urgencia_sugerida=resultado["urgencia_sugerida"],
-        diagnosticos_diferenciales=resultado["diagnosticos_diferenciales"],
+    background_tasks.add_task(
+        generar_prediagnostico_en_segundo_plano,
+        usuario_actual.id,
+        datos.descripcion,
     )
-    db.add(nuevo_prediagnostico)
-    db.commit()
-
     return nuevo
 
 
