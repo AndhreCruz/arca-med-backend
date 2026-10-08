@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from typing import Literal, Optional
+from datetime import datetime
 from constantes import ARTICULACIONES_VALIDAS, ARTICULACIONES_SIN_LADO, LADOS_VALIDOS
 
 Rol = Literal["paciente", "medico", "admin"]
@@ -82,6 +83,25 @@ class SintomaCreate(BaseModel):
 class SintomaResponse(BaseModel):
     id: int
     descripcion: str
+
+    class Config:
+        from_attributes = True
+
+
+class SintomaDetalle(BaseModel):
+    id: int
+    descripcion: str
+    creado_en: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentoDetalle(BaseModel):
+    id: int
+    nombre_archivo: str
+    tipo_archivo: Optional[str] = None
+    subido_en: datetime
 
     class Config:
         from_attributes = True

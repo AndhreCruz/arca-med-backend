@@ -9,6 +9,7 @@ load_dotenv()
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text, case
 from sqlalchemy.exc import IntegrityError
@@ -23,6 +24,7 @@ from schemas import (
     UsuarioUpdateAdmin, UsuarioResponse, 
     UsuarioLogin, Rol, Token, SintomaCreate, 
     SintomaResponse, DocumentoResponse,
+    SintomaDetalle, DocumentoDetalle,
     MetricaCreate, MetricaResponse,
     GuiaClinicaCreate, GuiaClinicaResponse,
     PacienteTriage, ResumenPaciente, MetricaResumen,
@@ -86,6 +88,18 @@ def crear_usuario(db: Session, nombre: str, email: str, password: str, rol: str)
         raise HTTPException(status_code=400, detail="Ese email ya está registrado")
     db.refresh(usuario)
     return usuario
+
+
+def obtener_paciente_o_404(db: Session, paciente_id: int) -> Usuario:
+    paciente = (
+        db.query(Usuario)
+        .filter(Usuario.id == paciente_id, Usuario.rol == "paciente")
+        .first()
+    )
+    if not paciente:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    return paciente
+
 
 @app.post("/auth/registro", response_model=Token)
 def registro(datos: RegistroPaciente, db: Session = Depends(get_db)):
@@ -364,6 +378,60 @@ def revisar_resumen(
     db.refresh(prediagnostico)
 
     return prediagnostico
+
+
+@app.get("/pacientes/{id}/sintomas", response_model=list[SintomaDetalle])
+def ver_sintomas_paciente(
+    id: int,
+    usuario_actual: Usuario = Depends(require_role("medico")),
+    db: Session = Depends(get_db)
+):
+    obtener_paciente_o_404(db, id)
+    return (
+        db.query(Sintoma)
+        .filter(Sintoma.usuario_id == id)
+        .order_by(Sintoma.creado_en.desc())
+        .all()
+    )
+
+
+@app.get("/pacientes/{id}/documentos", response_model=list[DocumentoDetalle])
+def ver_documentos_paciente(
+    id: int,
+    usuario_actual: Usuario = Depends(require_role("medico")),
+    db: Session = Depends(get_db)
+):
+    obtener_paciente_o_404(db, id)
+    return (
+        db.query(Documento)
+        .filter(Documento.usuario_id == id)
+        .order_by(Documento.subido_en.desc())
+        .all()
+    )
+
+
+@app.get("/pacientes/{id}/documentos/{doc_id}/archivo")
+def descargar_documento_paciente(
+    id: int,
+    doc_id: int,
+    usuario_actual: Usuario = Depends(require_role("medico")),
+    db: Session = Depends(get_db)
+):
+    obtener_paciente_o_404(db, id)
+    documento = (
+        db.query(Documento)
+        .filter(Documento.id == doc_id, Documento.usuario_id == id)
+        .first()
+    )
+    if not documento or not os.path.exists(documento.ruta_archivo):
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+
+    return FileResponse(
+        documento.ruta_archivo,
+        media_type=documento.tipo_archivo,
+        filename=documento.nombre_archivo,
+        content_disposition_type="inline",
+    )
 
 
 @app.post("/ejercicios", response_model=EjercicioResponse)
