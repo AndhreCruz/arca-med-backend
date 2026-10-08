@@ -179,7 +179,7 @@ window.open(URL.createObjectURL(blob), "_blank");
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| POST | `/sintomas` | Registra un síntoma. Body: `{descripcion}`. Devuelve `{id, descripcion}`. Genera automáticamente el prediagnóstico con IA (el paciente no lo ve) |
+| POST | `/sintomas` | Registra un síntoma. Body: `{descripcion}`. Devuelve `{id, descripcion}` al instante. El prediagnóstico con IA se genera en segundo plano y aparece en la bandeja del médico unos segundos después (el paciente no lo ve) |
 | POST | `/documentos` | Sube un documento (PDF/JPG/PNG, máx 10MB). Body: `multipart/form-data` con el archivo en el campo `archivo`. Devuelve `{id, nombre_archivo, ruta_archivo}` |
 | POST | `/metricas` | Registra una métrica de rango de movimiento. Body: `{articulacion, lado, angulo_maximo, angulo_minimo}` (ver reglas de articulaciones abajo). Devuelve `{id, articulacion, lado, angulo_maximo, angulo_minimo}` |
 | GET | `/ejercicios` | Lista el catálogo (también disponible para admin). Filtro opcional: `?articulacion=rodilla`. Devuelve `[{id, nombre_ejercicio, descripcion, articulacion, imagen_url}]` |
@@ -196,6 +196,7 @@ window.open(URL.createObjectURL(blob), "_blank");
 | GET | `/pacientes/{id}/documentos` | Documentos subidos por el paciente: `[{id, nombre_archivo, tipo_archivo, subido_en}]` |
 | GET | `/pacientes/{id}/documentos/{doc_id}/archivo` | Devuelve el archivo (PDF/imagen) para verlo o descargarlo (ver ejemplo arriba) |
 | GET | `/medico/dashboard` | Endpoint de ejemplo, solo accesible por médicos |
+| GET | `/guias-clinicas` | Lista las guías clínicas que usa la IA (también disponible para admin): `[{id, titulo, contenido, creado_en}]` |
 
 ### Administrador (Web)
 
