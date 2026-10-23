@@ -131,11 +131,6 @@ def leer_mi_perfil(usuario_actual: Usuario = Depends(get_current_user)):
     return {"id": usuario_actual.id, "nombre": usuario_actual.nombre, "rol": usuario_actual.rol}
 
 
-@app.get("/medico/dashboard")
-def dashboard_medico(usuario_actual: Usuario = Depends(require_role("medico"))):
-    return {"mensaje": f"Bienvenido doctor(a) {usuario_actual.nombre}"}
-
-
 @app.get("/admin/usuarios", response_model=list[UsuarioResponse])
 def listar_usuarios(
     rol: Optional[Rol] = Query(None),

@@ -195,7 +195,6 @@ window.open(URL.createObjectURL(blob), "_blank");
 | GET | `/pacientes/{id}/sintomas` | Síntomas escritos por el paciente, texto original, del más reciente al más antiguo: `[{id, descripcion, creado_en}]` |
 | GET | `/pacientes/{id}/documentos` | Documentos subidos por el paciente: `[{id, nombre_archivo, tipo_archivo, subido_en}]` |
 | GET | `/pacientes/{id}/documentos/{doc_id}/archivo` | Devuelve el archivo (PDF/imagen) para verlo o descargarlo (ver ejemplo arriba) |
-| GET | `/medico/dashboard` | Endpoint de ejemplo, solo accesible por médicos |
 | GET | `/guias-clinicas` | Lista las guías clínicas que usa la IA (también disponible para admin): `[{id, titulo, contenido, creado_en}]` |
 
 ### Administrador (Web)
@@ -209,6 +208,17 @@ window.open(URL.createObjectURL(blob), "_blank");
 | POST | `/guias-clinicas` | Carga una guía clínica (genera su embedding automáticamente). Body: `{titulo, contenido}`. Devuelve `{id, titulo}` |
 | POST | `/ejercicios` | Crea un ejercicio del catálogo. Body: `{nombre_ejercicio, descripcion, articulacion}`. Devuelve el ejercicio creado |
 | POST | `/ejercicios/{id}/imagen` | Sube o reemplaza la imagen del ejercicio (JPG/PNG, `multipart/form-data`, campo `archivo`). Devuelve el ejercicio con `imagen_url` |
+
+### Auditoría (Administrador)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/auditoria/logs` | Lista los registros de auditoría, del más reciente al más antiguo. Filtros opcionales: `?usuario_id=`, `?usuario_afectado_id=`, `?accion=`, `?limite=` (100 por defecto, máx. 500). Devuelve `[{id, usuario_id, rol, accion, usuario_afectado_id, detalle, ip, fecha}]` |
+| GET | `/auditoria/verificar` | Recalcula la cadena de hash y confirma que ningún registro fue alterado. Devuelve `{integra, total_revisados, id_con_error, motivo}` |
+
+**Qué se registra:** cada vez que un médico accede a datos de un paciente (`ver_triage`, `ver_resumen`, `revisar_prediagnostico`, `ver_sintomas`, `ver_documentos`, `descargar_documento`) y cada acción de un admin (`crear_usuario`, `editar_usuario`, `crear_guia`, `crear_ejercicio`, `subir_imagen_ejercicio`). Al editar un usuario se guardan solo los nombres de los campos cambiados, nunca sus valores (por ejemplo, nunca la contraseña).
+
+**Cómo se protege:** los registros no se pueden modificar ni borrar (triggers en la base de datos). Además, cada registro guarda el hash SHA-256 del anterior, formando una cadena: si alguien altera un registro directamente en la base, `/auditoria/verificar` lo detecta e indica cuál.
 
 ## Registro y gestión de usuarios
 
