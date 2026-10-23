@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
 from typing import Literal, Optional
 from datetime import datetime
 from constantes import ARTICULACIONES_VALIDAS, ARTICULACIONES_SIN_LADO, LADOS_VALIDOS
@@ -245,3 +245,23 @@ class EjecucionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AuditoriaLogResponse(BaseModel):
+    id: int
+    usuario_id: int | None
+    rol: str
+    accion: str
+    usuario_afectado_id: int | None
+    detalle: str | None
+    ip: str | None
+    fecha: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class VerificacionAuditoriaResponse(BaseModel):
+    integra: bool
+    total_revisados: int
+    id_con_error: int | None
+    motivo: str | None

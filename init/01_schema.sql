@@ -1,6 +1,7 @@
 -- Extensión de pgvector
 CREATE EXTENSION IF NOT EXISTS vector;
 
+
 -- Tabla de usuarios (paciente, médico, admin)
 CREATE TABLE usuarios (
     id SERIAL PRIMARY KEY,
@@ -12,6 +13,7 @@ CREATE TABLE usuarios (
     activo BOOLEAN NOT NULL DEFAULT TRUE,
 );
 
+
 -- Síntomas ingresados por el paciente (texto libre)
 CREATE TABLE sintomas (
     id SERIAL PRIMARY KEY,
@@ -19,6 +21,7 @@ CREATE TABLE sintomas (
     descripcion TEXT NOT NULL,
     creado_en TIMESTAMP DEFAULT NOW()
 );
+
 
 -- Documentos subidos (PDF, imágenes)
 CREATE TABLE documentos (
@@ -29,6 +32,7 @@ CREATE TABLE documentos (
     tipo_archivo VARCHAR(50),
     subido_en TIMESTAMP DEFAULT NOW()
 );
+
 
 -- Métricas físicas (rango de movimiento articular, capturado por la app)
 CREATE TABLE metricas_fisicas (
@@ -41,6 +45,7 @@ CREATE TABLE metricas_fisicas (
     medido_en TIMESTAMP DEFAULT NOW()
 );
 
+
 -- Guías clínicas (para el RAG)
 CREATE TABLE guias_clinicas (
     id SERIAL PRIMARY KEY,
@@ -49,6 +54,7 @@ CREATE TABLE guias_clinicas (
     embedding VECTOR(1536),
     creado_en TIMESTAMP DEFAULT NOW()
 );
+
 
 -- Resultado del pipeline RAG
 CREATE TABLE prediagnosticos (
@@ -61,6 +67,7 @@ CREATE TABLE prediagnosticos (
     creado_en TIMESTAMP DEFAULT NOW()
 );
 
+
 -- Catálogo de ejercicios
 CREATE TABLE ejercicios_recomendados (
     id SERIAL PRIMARY KEY,
@@ -71,6 +78,7 @@ CREATE TABLE ejercicios_recomendados (
     creado_en TIMESTAMP DEFAULT NOW()
 );
 
+
 -- Feedback de cómo el paciente ejecutó el ejercicio
 CREATE TABLE ejecuciones_ejercicio (
     id SERIAL PRIMARY KEY,
@@ -80,3 +88,36 @@ CREATE TABLE ejecuciones_ejercicio (
     comentario TEXT,
     ejecutado_en TIMESTAMP DEFAULT NOW()
 );
+
+
+-- Auditoria
+CREATE TABLE auditoria_logs (
+    id SERIAL PRIMARY KEY,
+    usuario_id INTEGER REFERENCES usuarios(id),
+    rol VARCHAR(20) NOT NULL,
+    accion VARCHAR(50) NOT NULL,
+    usuario_afectado_id INTEGER REFERENCES usuarios(id),
+    detalle TEXT,
+    ip VARCHAR(45),
+    fecha TIMESTAMPTZ NOT NULL,
+    hash_anterior CHAR(64) NOT NULL,
+    hash CHAR(64) NOT NULL
+);
+
+
+CREATE INDEX idx_auditoria_usuario ON auditoria_logs(usuario_id);
+CREATE INDEX idx_auditoria_afectado ON auditoria_logs(usuario_afectado_id);
+
+CREATE OR REPLACE FUNCTION impedir_modificacion_auditoria() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'Los registros de auditoria no se pueden modificar ni borrar';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER auditoria_inmutable
+BEFORE UPDATE OR DELETE ON auditoria_logs
+FOR EACH ROW EXECUTE FUNCTION impedir_modificacion_auditoria();
+
+CREATE TRIGGER auditoria_sin_truncate
+BEFORE TRUNCATE ON auditoria_logs
+FOR EACH STATEMENT EXECUTE FUNCTION impedir_modificacion_auditoria();

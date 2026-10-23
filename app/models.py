@@ -90,3 +90,18 @@ class EjecucionEjercicio(Base):
     correcto = Column(Boolean)
     comentario = Column(Text)
     ejecutado_en = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuditoriaLog(Base):
+    __tablename__ = "auditoria_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"))
+    rol = Column(String(20), nullable=False)
+    accion = Column(String(50), nullable=False)
+    usuario_afectado_id = Column(Integer, ForeignKey("usuarios.id"))
+    detalle = Column(Text)
+    ip = Column(String(45))
+    fecha = Column(DateTime(timezone=True), nullable=False)
+    hash_anterior = Column(String(64), nullable=False)
+    hash = Column(String(64), nullable=False)

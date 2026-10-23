@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -18,6 +18,7 @@ from database import get_db
 from models import (
     Usuario, Sintoma, Documento, MetricaFisica, GuiaClinica,
     Prediagnostico, EjercicioRecomendado, EjecucionEjercicio,
+    AuditoriaLog,
 )
 from schemas import (
     RegistroPaciente, UsuarioCreateAdmin,
@@ -31,6 +32,7 @@ from schemas import (
     RevisarRequest, RevisarResponse,
     EjercicioCreate, EjercicioResponse,
     EjecucionCreate, EjecucionResponse,
+    AuditoriaLogResponse, VerificacionAuditoriaResponse
 )
 from auth import hash_password, verify_password, create_token
 from deps import get_current_user, require_role
@@ -38,11 +40,11 @@ from embeddings import generar_embedding, buscar_guias_relevantes
 from anonimizar import anonimizar_texto
 from llm import generar_prediagnostico
 from pipeline import generar_prediagnostico_en_segundo_plano
+from auditoria import registrar_auditoria, verificar_cadena
 from constantes import ARTICULACIONES_VALIDAS
 
 app = FastAPI()
 
-# --- CORS: origenes permitidos para la web, configurables en el .env ---
 ORIGENES_POR_DEFECTO = "http://localhost:5173,http://127.0.0.1:5173"
 
 origenes_permitidos = [
@@ -149,10 +151,15 @@ def listar_usuarios(
 @app.post("/admin/usuarios", response_model=UsuarioResponse)
 def crear_usuario_admin(
     datos: UsuarioCreateAdmin,
+    request: Request,  
     usuario_actual: Usuario = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
-    return crear_usuario(db, datos.nombre, datos.email, datos.password, datos.rol)
+    nuevo = crear_usuario(db, datos.nombre, datos.email, datos.password, datos.rol)
+
+    registrar_auditoria(db, usuario_actual, "crear_usuario", request,
+                        usuario_afectado_id=nuevo.id, detalle=f"rol={nuevo.rol}")
+    return nuevo
 
 
 @app.get("/admin/usuarios/{id}", response_model=UsuarioResponse)
@@ -171,6 +178,7 @@ def ver_usuario(
 def editar_usuario(
     id: int,
     datos: UsuarioUpdateAdmin,
+    request: Request,  
     usuario_actual: Usuario = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
@@ -179,6 +187,7 @@ def editar_usuario(
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     cambios = datos.model_dump(exclude_unset=True, exclude_none=True)
+    campos_cambiados = list(cambios.keys())  
 
     if usuario.id == usuario_actual.id and ("rol" in cambios or "activo" in cambios):
         raise HTTPException(status_code=400, detail="No puedes cambiar tu propio rol ni desactivar tu propia cuenta")
@@ -196,6 +205,10 @@ def editar_usuario(
         raise HTTPException(status_code=400, detail="Ese email ya está registrado")
 
     db.refresh(usuario)
+
+    registrar_auditoria(db, usuario_actual, "editar_usuario", request,
+                        usuario_afectado_id=usuario.id,
+                        detalle="campos: " + ", ".join(campos_cambiados))
     return usuario
 
 
@@ -272,6 +285,7 @@ def crear_metrica(
 @app.post("/guias-clinicas", response_model=GuiaClinicaResponse)
 def crear_guia_clinica(
     datos: GuiaClinicaCreate,
+    request: Request,  
     usuario_actual: Usuario = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
@@ -285,6 +299,9 @@ def crear_guia_clinica(
     db.add(nueva_guia)
     db.commit()
     db.refresh(nueva_guia)
+
+    registrar_auditoria(db, usuario_actual, "crear_guia", request,
+                        detalle=f"guia_id={nueva_guia.id}")
     return nueva_guia
 
 
@@ -298,6 +315,7 @@ def listar_guias_clinicas(
 
 @app.get("/pacientes/triage", response_model=list[PacienteTriage])
 def listar_triage(
+    request: Request,  
     usuario_actual: Usuario = Depends(require_role("medico")),
     db: Session = Depends(get_db)
 ):
@@ -308,6 +326,9 @@ def listar_triage(
         .order_by(orden_urgencia)
         .all()
     )
+
+    registrar_auditoria(db, usuario_actual, "ver_triage", request,
+                        detalle=f"{len(resultados)} pacientes en bandeja")
 
     return [
         {
@@ -322,6 +343,7 @@ def listar_triage(
 @app.get("/pacientes/{id}/resumen", response_model=ResumenPaciente)
 def ver_resumen_paciente(
     id: int,
+    request: Request, 
     usuario_actual: Usuario = Depends(require_role("medico")),
     db: Session = Depends(get_db)
 ):
@@ -344,6 +366,9 @@ def ver_resumen_paciente(
         .all()
     )
 
+    registrar_auditoria(db, usuario_actual, "ver_resumen", request,
+                        usuario_afectado_id=id)
+
     return {
         "resumen_generado": prediagnostico.resumen_generado,
         "diagnosticos_diferenciales": prediagnostico.diagnosticos_diferenciales,
@@ -356,6 +381,7 @@ def ver_resumen_paciente(
 def revisar_resumen(
     id: int,
     datos: RevisarRequest,
+    request: Request,  
     usuario_actual: Usuario = Depends(require_role("medico")),
     db: Session = Depends(get_db)
 ):
@@ -377,43 +403,57 @@ def revisar_resumen(
     db.commit()
     db.refresh(prediagnostico)
 
+    registrar_auditoria(db, usuario_actual, "revisar_prediagnostico", request,
+                        usuario_afectado_id=id,
+                        detalle=f"revisado={datos.revisado_por_medico}")
     return prediagnostico
 
 
 @app.get("/pacientes/{id}/sintomas", response_model=list[SintomaDetalle])
 def ver_sintomas_paciente(
     id: int,
+    request: Request, 
     usuario_actual: Usuario = Depends(require_role("medico")),
     db: Session = Depends(get_db)
 ):
     obtener_paciente_o_404(db, id)
-    return (
+    sintomas = (
         db.query(Sintoma)
         .filter(Sintoma.usuario_id == id)
         .order_by(Sintoma.creado_en.desc())
         .all()
     )
 
+    registrar_auditoria(db, usuario_actual, "ver_sintomas", request,
+                        usuario_afectado_id=id)
+    return sintomas
+
 
 @app.get("/pacientes/{id}/documentos", response_model=list[DocumentoDetalle])
 def ver_documentos_paciente(
     id: int,
+    request: Request,  
     usuario_actual: Usuario = Depends(require_role("medico")),
     db: Session = Depends(get_db)
 ):
     obtener_paciente_o_404(db, id)
-    return (
+    documentos = (
         db.query(Documento)
         .filter(Documento.usuario_id == id)
         .order_by(Documento.subido_en.desc())
         .all()
     )
 
+    registrar_auditoria(db, usuario_actual, "ver_documentos", request,
+                        usuario_afectado_id=id)
+    return documentos
+
 
 @app.get("/pacientes/{id}/documentos/{doc_id}/archivo")
 def descargar_documento_paciente(
     id: int,
     doc_id: int,
+    request: Request,  
     usuario_actual: Usuario = Depends(require_role("medico")),
     db: Session = Depends(get_db)
 ):
@@ -426,6 +466,9 @@ def descargar_documento_paciente(
     if not documento or not os.path.exists(documento.ruta_archivo):
         raise HTTPException(status_code=404, detail="Documento no encontrado")
 
+    registrar_auditoria(db, usuario_actual, "descargar_documento", request,
+                        usuario_afectado_id=id, detalle=f"documento_id={doc_id}")
+
     return FileResponse(
         documento.ruta_archivo,
         media_type=documento.tipo_archivo,
@@ -437,6 +480,7 @@ def descargar_documento_paciente(
 @app.post("/ejercicios", response_model=EjercicioResponse)
 def crear_ejercicio(
     datos: EjercicioCreate,
+    request: Request, 
     usuario_actual: Usuario = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
@@ -448,12 +492,16 @@ def crear_ejercicio(
     db.add(nuevo)
     db.commit()
     db.refresh(nuevo)
+
+    registrar_auditoria(db, usuario_actual, "crear_ejercicio", request,
+                        detalle=f"ejercicio_id={nuevo.id}")
     return nuevo
 
 
 @app.post("/ejercicios/{id}/imagen", response_model=EjercicioResponse)
 def subir_imagen_ejercicio(
     id: int,
+    request: Request,  
     archivo: UploadFile = File(...),
     usuario_actual: Usuario = Depends(require_role("admin")),
     db: Session = Depends(get_db)
@@ -482,6 +530,9 @@ def subir_imagen_ejercicio(
     ejercicio.imagen_url = f"/static/ejercicios/{nombre_unico}"
     db.commit()
     db.refresh(ejercicio)
+
+    registrar_auditoria(db, usuario_actual, "subir_imagen_ejercicio", request,
+                        detalle=f"ejercicio_id={id}")
     return ejercicio
 
 
@@ -520,3 +571,30 @@ def registrar_ejecucion(
     db.commit()
     db.refresh(ejecucion)
     return ejecucion
+
+
+@app.get("/auditoria/logs", response_model=list[AuditoriaLogResponse])
+def listar_auditoria(
+    usuario_id: int | None = None,
+    usuario_afectado_id: int | None = None,
+    accion: str | None = None,
+    limite: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(require_role("admin")),
+):
+    consulta = db.query(AuditoriaLog)
+    if usuario_id is not None:
+        consulta = consulta.filter(AuditoriaLog.usuario_id == usuario_id)
+    if usuario_afectado_id is not None:
+        consulta = consulta.filter(AuditoriaLog.usuario_afectado_id == usuario_afectado_id)
+    if accion:
+        consulta = consulta.filter(AuditoriaLog.accion == accion)
+    return consulta.order_by(AuditoriaLog.id.desc()).limit(limite).all()
+
+
+@app.get("/auditoria/verificar", response_model=VerificacionAuditoriaResponse)
+def verificar_auditoria(
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(require_role("admin")),
+):
+    return verificar_cadena(db)
