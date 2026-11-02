@@ -265,3 +265,11 @@ class VerificacionAuditoriaResponse(BaseModel):
     total_revisados: int
     id_con_error: int | None
     motivo: str | None
+
+    
+class PacienteListado(BaseModel):
+    id: int
+    nombre: str
+    email: str
+
+    model_config = ConfigDict(from_attributes=True)

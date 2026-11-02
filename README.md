@@ -182,13 +182,14 @@ window.open(URL.createObjectURL(blob), "_blank");
 | POST | `/sintomas` | Registra un síntoma. Body: `{descripcion}`. Devuelve `{id, descripcion}` al instante. El prediagnóstico con IA se genera en segundo plano y aparece en la bandeja del médico unos segundos después (el paciente no lo ve) |
 | POST | `/documentos` | Sube un documento (PDF/JPG/PNG, máx 10MB). Body: `multipart/form-data` con el archivo en el campo `archivo`. Devuelve `{id, nombre_archivo, ruta_archivo}` |
 | POST | `/metricas` | Registra una métrica de rango de movimiento. Body: `{articulacion, lado, angulo_maximo, angulo_minimo}` (ver reglas de articulaciones abajo). Devuelve `{id, articulacion, lado, angulo_maximo, angulo_minimo}` |
-| GET | `/ejercicios` | Lista el catálogo (también disponible para admin). Filtro opcional: `?articulacion=rodilla`. Devuelve `[{id, nombre_ejercicio, descripcion, articulacion, imagen_url}]` |
+| GET | `/ejercicios` | Lista el catálogo (también disponible para médico y admin). Filtro opcional: `?articulacion=rodilla`. Devuelve `[{id, nombre_ejercicio, descripcion, articulacion, imagen_url}]` |
 | POST | `/ejercicios/{id}/ejecucion` | Registra que el paciente realizó el ejercicio. Body: `{correcto, comentario}` (comentario opcional). Devuelve `{id, ejercicio_id, correcto, comentario}` |
 
 ### Médico (Web)
 
 | Método | Ruta | Descripción |
 |---|---|---|
+| GET | `/pacientes` | Lista los pacientes activos, ordenados por nombre. Búsqueda opcional: `?nombre=juan`. Devuelve `[{id, nombre, email}]` |
 | GET | `/pacientes/triage` | Pacientes con prediagnóstico pendiente de revisión, ordenados por urgencia (alta → media → baja) |
 | GET | `/pacientes/{id}/resumen` | Resumen generado por IA: resumen, diagnósticos diferenciales con probabilidad, urgencia sugerida y métricas físicas |
 | POST | `/pacientes/{id}/resumen/revisar` | Marca el prediagnóstico como revisado (sale de la bandeja de triage). Body: `{revisado_por_medico: true}` |
@@ -216,7 +217,7 @@ window.open(URL.createObjectURL(blob), "_blank");
 | GET | `/auditoria/logs` | Lista los registros de auditoría, del más reciente al más antiguo. Filtros opcionales: `?usuario_id=`, `?usuario_afectado_id=`, `?accion=`, `?limite=` (100 por defecto, máx. 500). Devuelve `[{id, usuario_id, rol, accion, usuario_afectado_id, detalle, ip, fecha}]` |
 | GET | `/auditoria/verificar` | Recalcula la cadena de hash y confirma que ningún registro fue alterado. Devuelve `{integra, total_revisados, id_con_error, motivo}` |
 
-**Qué se registra:** cada vez que un médico accede a datos de un paciente (`ver_triage`, `ver_resumen`, `revisar_prediagnostico`, `ver_sintomas`, `ver_documentos`, `descargar_documento`) y cada acción de un admin (`crear_usuario`, `editar_usuario`, `crear_guia`, `crear_ejercicio`, `subir_imagen_ejercicio`). Al editar un usuario se guardan solo los nombres de los campos cambiados, nunca sus valores (por ejemplo, nunca la contraseña).
+**Qué se registra:** cada vez que un médico accede a datos de un paciente (`ver_pacientes`, `ver_triage`, `ver_resumen`, `revisar_prediagnostico`, `ver_sintomas`, `ver_documentos`, `descargar_documento`) y cada acción de un admin (`crear_usuario`, `editar_usuario`, `crear_guia`, `crear_ejercicio`, `subir_imagen_ejercicio`). Al editar un usuario se guardan solo los nombres de los campos cambiados, nunca sus valores (por ejemplo, nunca la contraseña).
 
 **Cómo se protege:** los registros no se pueden modificar ni borrar (triggers en la base de datos). Además, cada registro guarda el hash SHA-256 del anterior, formando una cadena: si alguien altera un registro directamente en la base, `/auditoria/verificar` lo detecta e indica cuál.
 

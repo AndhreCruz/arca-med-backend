@@ -32,7 +32,8 @@ from schemas import (
     RevisarRequest, RevisarResponse,
     EjercicioCreate, EjercicioResponse,
     EjecucionCreate, EjecucionResponse,
-    AuditoriaLogResponse, VerificacionAuditoriaResponse
+    AuditoriaLogResponse, VerificacionAuditoriaResponse,
+    PacienteListado
 )
 from auth import hash_password, verify_password, create_token
 from deps import get_current_user, require_role
@@ -534,7 +535,7 @@ def subir_imagen_ejercicio(
 @app.get("/ejercicios", response_model=list[EjercicioResponse])
 def listar_ejercicios(
     articulacion: Optional[str] = Query(None),
-    usuario_actual: Usuario = Depends(require_role("paciente", "admin")),
+    usuario_actual: Usuario = Depends(require_role("paciente", "medico", "admin")),
     db: Session = Depends(get_db)
 ):
     consulta = db.query(EjercicioRecomendado)
@@ -593,3 +594,20 @@ def verificar_auditoria(
     usuario_actual: Usuario = Depends(require_role("admin")),
 ):
     return verificar_cadena(db)
+
+
+@app.get("/pacientes", response_model=list[PacienteListado])
+def listar_pacientes(
+    request: Request,
+    nombre: Optional[str] = Query(None),
+    usuario_actual: Usuario = Depends(require_role("medico")),
+    db: Session = Depends(get_db)
+):
+    consulta = db.query(Usuario).filter(Usuario.rol == "paciente", Usuario.activo == True)
+    if nombre:
+        consulta = consulta.filter(Usuario.nombre.ilike(f"%{nombre}%"))
+    pacientes = consulta.order_by(Usuario.nombre).all()
+
+    registrar_auditoria(db, usuario_actual, "ver_pacientes", request,
+                        detalle=f"busqueda={nombre}" if nombre else None)
+    return pacientes
