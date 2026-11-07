@@ -17,8 +17,8 @@ El objetivo es **apoyar y enriquecer** la consulta, entregando al profesional in
 
 No es un sistema omnicanal (cada plataforma no ofrece lo mismo) — las funciones están repartidas según el rol:
 
-- **App (Android)** — exclusiva para el **paciente**: registro/login, carga de síntomas y documentos, captura de rango de movimiento por cámara y catálogo de ejercicios.
-- **Web** — exclusiva para **médico** y **administrador**: el médico ve el dashboard de triage, los resúmenes/prediagnósticos y los síntomas y documentos del paciente; el administrador gestiona usuarios, guías clínicas y el catálogo de ejercicios.
+- **App (Android)** — exclusiva para el **paciente**: registro/login, carga de síntomas y documentos, captura de rango de movimiento por cámara, catálogo de ejercicios y sus próximas citas.
+- **Web** — exclusiva para **médico** y **administrador**: el médico ve el dashboard de triage, los resúmenes/prediagnósticos, los síntomas y documentos del paciente y su calendario de citas; el administrador gestiona usuarios, guías clínicas, el catálogo de ejercicios y registra las citas (ver [Citas](#citas)).
 
 ## Cómo levantar el proyecto
 
@@ -162,8 +162,10 @@ window.open(URL.createObjectURL(blob), "_blank");
 
 - `401 Unauthorized` → no se mandó token, es inválido, expiró, o la cuenta fue desactivada → hay que loguear de nuevo.
 - `403 Forbidden` → el token es válido, pero el rol del usuario no tiene permiso para ese endpoint (ej. un paciente llamando a un endpoint de médico). En el login, también indica que la cuenta está desactivada.
-- `404 Not Found` → el recurso no existe (paciente, documento, ejercicio, usuario).
-- `422 Unprocessable Entity` → el body no cumple las reglas (campo faltante, contraseña corta, articulación inválida, etc.). La respuesta trae el detalle del error.
+- `400 Bad Request` → la petición no se puede cumplir por una regla del negocio (ej. una cita en una fecha pasada o una cita ya cancelada que se intenta modificar). El mensaje explica el motivo.
+- `404 Not Found` → el recurso no existe (paciente, médico, documento, ejercicio, usuario, cita).
+- `409 Conflict` → el médico ya tiene una cita en ese horario.
+- `422 Unprocessable Entity` → el body no cumple las reglas (campo faltante, contraseña corta, articulación inválida, fecha sin zona horaria, etc.). La respuesta trae el detalle del error.
 
 ## Endpoints disponibles
 
@@ -184,6 +186,7 @@ window.open(URL.createObjectURL(blob), "_blank");
 | POST | `/metricas` | Registra una métrica de rango de movimiento. Body: `{articulacion, lado, angulo_maximo, angulo_minimo}` (ver reglas de articulaciones abajo). Devuelve `{id, articulacion, lado, angulo_maximo, angulo_minimo}` |
 | GET | `/ejercicios` | Lista el catálogo (también disponible para médico y admin). Filtro opcional: `?articulacion=rodilla`. Devuelve `[{id, nombre_ejercicio, descripcion, articulacion, imagen_url}]` |
 | POST | `/ejercicios/{id}/ejecucion` | Registra que el paciente realizó el ejercicio. Body: `{correcto, comentario}` (comentario opcional). Devuelve `{id, ejercicio_id, correcto, comentario}` |
+| GET | `/mis-citas` | Citas del paciente logueado, de la más próxima a la más lejana. Por defecto solo las próximas; `?solo_proximas=false` incluye también las pasadas (ver sección [Citas](#citas)) |
 
 ### Médico (Web)
 
@@ -197,6 +200,7 @@ window.open(URL.createObjectURL(blob), "_blank");
 | GET | `/pacientes/{id}/documentos` | Documentos subidos por el paciente: `[{id, nombre_archivo, tipo_archivo, subido_en}]` |
 | GET | `/pacientes/{id}/documentos/{doc_id}/archivo` | Devuelve el archivo (PDF/imagen) para verlo o descargarlo (ver ejemplo arriba) |
 | GET | `/guias-clinicas` | Lista las guías clínicas que usa la IA (también disponible para admin): `[{id, titulo, contenido, creado_en}]` |
+| GET | `/citas` | Citas **del médico logueado**, para el calendario. Filtros opcionales: `?desde=`, `?hasta=`, `?paciente_id=`, `?estado=` (ver sección [Citas](#citas)) |
 
 ### Administrador (Web)
 
@@ -209,6 +213,9 @@ window.open(URL.createObjectURL(blob), "_blank");
 | POST | `/guias-clinicas` | Carga una guía clínica (genera su embedding automáticamente). Body: `{titulo, contenido}`. Devuelve `{id, titulo}` |
 | POST | `/ejercicios` | Crea un ejercicio del catálogo. Body: `{nombre_ejercicio, descripcion, articulacion}`. Devuelve el ejercicio creado |
 | POST | `/ejercicios/{id}/imagen` | Sube o reemplaza la imagen del ejercicio (JPG/PNG, `multipart/form-data`, campo `archivo`). Devuelve el ejercicio con `imagen_url` |
+| GET | `/citas` | Todas las citas. Mismos filtros que el médico, más `?medico_id=` |
+| POST | `/citas` | Registra una cita. Body: `{paciente_id, medico_id, fecha_hora, duracion_minutos, motivo}` (`duracion_minutos` y `motivo` opcionales) |
+| PATCH | `/citas/{id}` | Reprograma, cancela o completa una cita. Se envían **solo** los campos a cambiar: `{fecha_hora, duracion_minutos, motivo, estado}` |
 
 ### Auditoría (Administrador)
 
@@ -217,9 +224,137 @@ window.open(URL.createObjectURL(blob), "_blank");
 | GET | `/auditoria/logs` | Lista los registros de auditoría, del más reciente al más antiguo. Filtros opcionales: `?usuario_id=`, `?usuario_afectado_id=`, `?accion=`, `?limite=` (100 por defecto, máx. 500). Devuelve `[{id, usuario_id, rol, accion, usuario_afectado_id, detalle, ip, fecha}]` |
 | GET | `/auditoria/verificar` | Recalcula la cadena de hash y confirma que ningún registro fue alterado. Devuelve `{integra, total_revisados, id_con_error, motivo}` |
 
-**Qué se registra:** cada vez que un médico accede a datos de un paciente (`ver_pacientes`, `ver_triage`, `ver_resumen`, `revisar_prediagnostico`, `ver_sintomas`, `ver_documentos`, `descargar_documento`) y cada acción de un admin (`crear_usuario`, `editar_usuario`, `crear_guia`, `crear_ejercicio`, `subir_imagen_ejercicio`). Al editar un usuario se guardan solo los nombres de los campos cambiados, nunca sus valores (por ejemplo, nunca la contraseña).
+**Qué se registra:** cada vez que un médico accede a datos de un paciente (`ver_pacientes`, `ver_triage`, `ver_resumen`, `revisar_prediagnostico`, `ver_sintomas`, `ver_documentos`, `descargar_documento`) y cada acción de un admin (`crear_usuario`, `editar_usuario`, `crear_guia`, `crear_ejercicio`, `subir_imagen_ejercicio`, `crear_cita`, `editar_cita`). También se registra cuando el médico consulta su calendario (`ver_citas`). Al editar un usuario se guardan solo los nombres de los campos cambiados, nunca sus valores (por ejemplo, nunca la contraseña).
 
 **Cómo se protege:** los registros no se pueden modificar ni borrar (triggers en la base de datos). Además, cada registro guarda el hash SHA-256 del anterior, formando una cadena: si alguien altera un registro directamente en la base, `/auditoria/verificar` lo detecta e indica cuál.
+
+## Citas
+
+ARCA Med **no es un sistema de reserva de horas**. En un entorno real, el paciente reserva su hora en el sistema del centro médico, y ese sistema le informa la cita a ARCA Med. ARCA Med usa la cita como contexto de la pre-consulta:
+
+- **Paciente (App):** ve su próxima cita y sabe hasta cuándo tiene para enviar síntomas, documentos y mediciones.
+- **Médico (Web):** ve sus citas en un calendario y, desde cada una, puede abrir el resumen del paciente.
+
+En este MVP no existe ese sistema externo, así que lo **simula el administrador**: las citas se registran con `POST /citas`. Además, la base trae **citas de prueba** (`init/05_citas.sql`) calculadas desde el día en que se levanta la base, para que el calendario siempre tenga citas próximas. La integración con el sistema de agenda real del centro médico queda como mejora futura.
+
+### Formato de una cita
+
+Todos los endpoints de citas devuelven el mismo formato:
+
+```json
+{
+  "id": 1,
+  "paciente_id": 6,
+  "paciente_nombre": "Juan Pérez",
+  "medico_id": 3,
+  "medico_nombre": "Camila Rojas",
+  "fecha_hora": "2026-11-10T12:00:00Z",
+  "duracion_minutos": 30,
+  "motivo": "Dolor de rodilla derecha al subir escaleras",
+  "estado": "programada"
+}
+```
+
+- `estado`: `programada`, `completada` o `cancelada`.
+- `motivo` puede venir en `null`.
+
+### Fechas y zona horaria
+
+- La API **devuelve** las fechas en UTC (terminan en `Z`). `2026-11-10T12:00:00Z` son las 09:00 en Chile. Para mostrarlas hay que convertirlas a la hora local: en JavaScript basta con `new Date(cita.fecha_hora)`.
+- La API **exige** que las fechas que se le envían incluyan zona horaria (`Z` o un desfase como `-03:00`). Sin ella responde `422`, porque `2026-11-10T09:00` sin zona es ambiguo. En JavaScript, `fecha.toISOString()` ya la incluye.
+
+### Web: calendario del médico (`GET /citas`)
+
+El médico solo recibe **sus propias** citas. Para llenar el calendario, pedir el rango visible con `desde` (incluido) y `hasta` (excluido). Ejemplo para la semana actual:
+
+```js
+// Lunes 00:00 de esta semana, en la hora local del navegador
+const inicio = new Date();
+inicio.setHours(0, 0, 0, 0);
+inicio.setDate(inicio.getDate() - ((inicio.getDay() + 6) % 7));
+
+const fin = new Date(inicio);
+fin.setDate(fin.getDate() + 7);
+
+const params = new URLSearchParams({
+  desde: inicio.toISOString(),
+  hasta: fin.toISOString(),
+});
+
+const res = await fetch(`http://localhost:8000/citas?${params}`, {
+  headers: { Authorization: `Bearer ${token}` },
+});
+const citas = await res.json();
+
+// Convertir a eventos de calendario (inicio y fin en hora local)
+const eventos = citas
+  .filter((c) => c.estado !== "cancelada")
+  .map((c) => {
+    const start = new Date(c.fecha_hora);
+    const end = new Date(start.getTime() + c.duracion_minutos * 60000);
+    return { id: c.id, title: c.paciente_nombre, start, end, pacienteId: c.paciente_id };
+  });
+```
+
+Con `pacienteId` se puede enlazar cada evento al resumen del paciente (`/pacientes/{id}/resumen`). Para mostrar también las canceladas (por ejemplo, tachadas), basta con no filtrarlas. Otros filtros útiles: `?estado=programada` y `?paciente_id=6` (todas las citas de un paciente).
+
+### App: citas del paciente (`GET /mis-citas`)
+
+```kotlin
+@GET("mis-citas")
+suspend fun misCitas(
+    @Header("Authorization") token: String,
+    @Query("solo_proximas") soloProximas: Boolean = true
+): List<CitaResponse>
+
+data class CitaResponse(
+    val id: Int,
+    val medico_nombre: String,
+    val fecha_hora: String,
+    val duracion_minutos: Int,
+    val motivo: String?,
+    val estado: String
+)
+```
+
+Para mostrar la fecha en la hora del celular:
+
+```kotlin
+val fechaLocal = OffsetDateTime.parse(cita.fecha_hora)
+    .atZoneSameInstant(ZoneId.systemDefault())
+```
+
+Por defecto solo vienen las citas próximas, de la más cercana a la más lejana: la primera de la lista es la próxima cita. Con `solo_proximas = false` vienen también las pasadas (historial).
+
+### Admin: registrar y modificar citas
+
+Probablemente no tenga interfaz en la web (lo haría el sistema del centro médico), pero se puede usar desde `/docs`.
+
+Crear (`POST /citas`):
+```json
+{
+  "paciente_id": 6,
+  "medico_id": 3,
+  "fecha_hora": "2026-11-12T10:00:00-03:00",
+  "duracion_minutos": 30,
+  "motivo": "Control"
+}
+```
+Los ids se obtienen con `GET /admin/usuarios?rol=paciente` y `GET /admin/usuarios?rol=medico`.
+
+Modificar (`PATCH /citas/{id}`), solo con los campos a cambiar:
+- Reprogramar: `{"fecha_hora": "2026-11-12T11:00:00-03:00"}`
+- Cancelar: `{"estado": "cancelada"}`
+- Marcar como realizada: `{"estado": "completada"}`
+
+### Reglas
+
+- Las citas **no se borran**: se cancelan.
+- La fecha debe ser futura (al crear o reprogramar). Si no, responde `400`.
+- El médico no puede tener dos citas programadas que se crucen. Si se cruzan, responde `409`.
+- La duración va de 10 a 180 minutos (30 por defecto).
+- Una cita `cancelada` o `completada` ya no se puede modificar (`400`).
+- El paciente debe estar activo, y el médico, existir y estar activo.
 
 ## Registro y gestión de usuarios
 
@@ -253,6 +388,7 @@ Al levantar la base por primera vez, los scripts de `init/` se ejecutan en orden
 | `02_usuarios.sql` | 10 usuarios de prueba |
 | `03_guias_clinicas.sql` | 16 guías clínicas de kinesiología/traumatología (sin embedding; ver abajo) |
 | `04_ejercicios.sql` | 29 ejercicios (3-4 por articulación, sin imagen) |
+| `05_citas.sql` | 9 citas de prueba: 7 programadas en los próximos días (la mayoría con `camila.rojas@arcamed.com`), 1 cancelada y 1 completada |
 
 Las guías se cargan con `embedding` vacío porque un SQL no puede llamar a OpenAI. Después de levantar la base, ejecutar una vez `python generar_embeddings_guias.py` (dentro de `app/`). Sin este paso, el prediagnóstico no encuentra guías relevantes.
 
