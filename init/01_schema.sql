@@ -9,8 +9,8 @@ CREATE TABLE usuarios (
     email VARCHAR(150) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     rol VARCHAR(20) NOT NULL CHECK (rol IN ('paciente', 'medico', 'admin')),
-    creado_en TIMESTAMP DEFAULT NOW()
-    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    creado_en TIMESTAMP DEFAULT NOW(),
+    activo BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 
@@ -121,3 +121,19 @@ FOR EACH ROW EXECUTE FUNCTION impedir_modificacion_auditoria();
 CREATE TRIGGER auditoria_sin_truncate
 BEFORE TRUNCATE ON auditoria_logs
 FOR EACH STATEMENT EXECUTE FUNCTION impedir_modificacion_auditoria();
+
+
+CREATE TABLE citas (
+    id SERIAL PRIMARY KEY,
+    paciente_id INTEGER NOT NULL REFERENCES usuarios(id),
+    medico_id INTEGER NOT NULL REFERENCES usuarios(id),
+    fecha_hora TIMESTAMPTZ NOT NULL,
+    duracion_minutos INTEGER NOT NULL DEFAULT 30 CHECK (duracion_minutos BETWEEN 10 AND 180),
+    motivo TEXT,
+    estado VARCHAR(20) NOT NULL DEFAULT 'programada'
+        CHECK (estado IN ('programada', 'completada', 'cancelada')),
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_citas_medico_fecha ON citas(medico_id, fecha_hora);
+CREATE INDEX idx_citas_paciente ON citas(paciente_id);

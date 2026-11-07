@@ -5,6 +5,10 @@ from constantes import ARTICULACIONES_VALIDAS, ARTICULACIONES_SIN_LADO, LADOS_VA
 
 Rol = Literal["paciente", "medico", "admin"]
 
+EstadoCita = Literal["programada", "completada", "cancelada"]
+
+MENSAJE_ZONA_HORARIA = "debe incluir zona horaria, ej: 2026-11-10T10:00:00-03:00"
+
 def validar_password(password: str) -> str:
     if len(password) < 8:
         raise ValueError("La contraseña debe tener al menos 8 caracteres")
@@ -271,5 +275,48 @@ class PacienteListado(BaseModel):
     id: int
     nombre: str
     email: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CitaCreate(BaseModel):
+    paciente_id: int
+    medico_id: int
+    fecha_hora: datetime
+    duracion_minutos: int = Field(30, ge=10, le=180)
+    motivo: Optional[str] = Field(None, max_length=500)
+
+    @field_validator("fecha_hora")
+    @classmethod
+    def validar_zona_horaria(cls, valor):
+        if valor.tzinfo is None:
+            raise ValueError(f"fecha_hora {MENSAJE_ZONA_HORARIA}")
+        return valor
+
+
+class CitaUpdate(BaseModel):
+    fecha_hora: Optional[datetime] = None
+    duracion_minutos: Optional[int] = Field(None, ge=10, le=180)
+    motivo: Optional[str] = Field(None, max_length=500)
+    estado: Optional[EstadoCita] = None
+
+    @field_validator("fecha_hora")
+    @classmethod
+    def validar_zona_horaria(cls, valor):
+        if valor is not None and valor.tzinfo is None:
+            raise ValueError(f"fecha_hora {MENSAJE_ZONA_HORARIA}")
+        return valor
+
+
+class CitaResponse(BaseModel):
+    id: int
+    paciente_id: int
+    paciente_nombre: str
+    medico_id: int
+    medico_nombre: str
+    fecha_hora: datetime
+    duracion_minutos: int
+    motivo: Optional[str]
+    estado: str
 
     model_config = ConfigDict(from_attributes=True)

@@ -3,6 +3,7 @@ from sqlalchemy.sql import func
 from database import Base
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 
 class Usuario(Base):
     __tablename__ = "usuarios"
@@ -105,3 +106,27 @@ class AuditoriaLog(Base):
     fecha = Column(DateTime(timezone=True), nullable=False)
     hash_anterior = Column(String(64), nullable=False)
     hash = Column(String(64), nullable=False)
+
+
+class Cita(Base):
+    __tablename__ = "citas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    paciente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    medico_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    fecha_hora = Column(DateTime(timezone=True), nullable=False)
+    duracion_minutos = Column(Integer, nullable=False, default=30)
+    motivo = Column(Text)
+    estado = Column(String(20), nullable=False, default="programada")
+    creado_en = Column(DateTime(timezone=True), server_default=func.now())
+
+    paciente = relationship("Usuario", foreign_keys=[paciente_id])
+    medico = relationship("Usuario", foreign_keys=[medico_id])
+
+    @property
+    def paciente_nombre(self):
+        return self.paciente.nombre
+
+    @property
+    def medico_nombre(self):
+        return self.medico.nombre

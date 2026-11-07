@@ -18,7 +18,7 @@ from database import get_db
 from models import (
     Usuario, Sintoma, Documento, MetricaFisica, GuiaClinica,
     Prediagnostico, EjercicioRecomendado, EjecucionEjercicio,
-    AuditoriaLog,
+    AuditoriaLog, Cita
 )
 from schemas import (
     RegistroPaciente, UsuarioCreateAdmin,
@@ -33,7 +33,7 @@ from schemas import (
     EjercicioCreate, EjercicioResponse,
     EjecucionCreate, EjecucionResponse,
     AuditoriaLogResponse, VerificacionAuditoriaResponse,
-    PacienteListado
+    PacienteListado, CitaCreate, CitaUpdate, CitaResponse, EstadoCita
 )
 from auth import hash_password, verify_password, create_token
 from deps import get_current_user, require_role
@@ -42,6 +42,7 @@ from anonimizar import anonimizar_texto
 from llm import generar_prediagnostico
 from pipeline import generar_prediagnostico_en_segundo_plano
 from auditoria import registrar_auditoria, verificar_cadena
+from datetime import datetime, timedelta, timezone
 from constantes import ARTICULACIONES_VALIDAS
 
 app = FastAPI()
@@ -76,6 +77,51 @@ orden_urgencia = case(
     (Prediagnostico.urgencia_sugerida == "baja", 3),
     else_=4
 )
+
+DURACION_MAXIMA_CITA = 180  # minutos, igual que el CHECK de la tabla
+
+
+def obtener_medico_o_404(db: Session, medico_id: int) -> Usuario:
+    medico = (
+        db.query(Usuario)
+        .filter(Usuario.id == medico_id, Usuario.rol == "medico", Usuario.activo == True)
+        .first()
+    )
+    if not medico:
+        raise HTTPException(status_code=404, detail="Médico no encontrado")
+    return medico
+
+
+def exigir_zona_horaria(valor: Optional[datetime], campo: str) -> None:
+    if valor is not None and valor.tzinfo is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{campo} debe incluir zona horaria, ej: 2026-11-10T10:00:00-03:00",
+        )
+
+
+def validar_horario_cita(db: Session, medico_id: int, fecha_hora: datetime,
+                         duracion_minutos: int, excluir_id: Optional[int] = None) -> None:
+    if fecha_hora <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="La cita debe ser en una fecha futura")
+
+    fin = fecha_hora + timedelta(minutes=duracion_minutos)
+
+    # Citas del médico que podrían cruzarse: empiezan antes de que termine la nueva
+    # y no tan atrás como para haber terminado antes de que la nueva empiece.
+    candidatas = db.query(Cita).filter(
+        Cita.medico_id == medico_id,
+        Cita.estado == "programada",
+        Cita.fecha_hora < fin,
+        Cita.fecha_hora > fecha_hora - timedelta(minutes=DURACION_MAXIMA_CITA),
+    )
+    if excluir_id is not None:
+        candidatas = candidatas.filter(Cita.id != excluir_id)
+
+    for cita in candidatas:
+        if cita.fecha_hora + timedelta(minutes=cita.duracion_minutos) > fecha_hora:
+            raise HTTPException(status_code=409, detail="El médico ya tiene una cita en ese horario")
+
 
 def crear_usuario(db: Session, nombre: str, email: str, password: str, rol: str) -> Usuario:
     usuario = Usuario(
@@ -611,3 +657,120 @@ def listar_pacientes(
     registrar_auditoria(db, usuario_actual, "ver_pacientes", request,
                         detalle=f"busqueda={nombre}" if nombre else None)
     return pacientes
+
+
+# ---------- Citas ----------
+
+@app.post("/citas", response_model=CitaResponse)
+def crear_cita(
+    datos: CitaCreate,
+    request: Request,
+    usuario_actual: Usuario = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    paciente = obtener_paciente_o_404(db, datos.paciente_id)
+    if not paciente.activo:
+        raise HTTPException(status_code=400, detail="El paciente está desactivado")
+    obtener_medico_o_404(db, datos.medico_id)
+    validar_horario_cita(db, datos.medico_id, datos.fecha_hora, datos.duracion_minutos)
+
+    cita = Cita(**datos.model_dump())
+    db.add(cita)
+    db.commit()
+    db.refresh(cita)
+
+    registrar_auditoria(db, usuario_actual, "crear_cita", request,
+                        usuario_afectado_id=cita.paciente_id, detalle=f"cita_id={cita.id}")
+    return cita
+
+
+@app.get("/citas", response_model=list[CitaResponse])
+def listar_citas(
+    request: Request,
+    desde: Optional[datetime] = Query(None),
+    hasta: Optional[datetime] = Query(None),
+    medico_id: Optional[int] = Query(None),
+    paciente_id: Optional[int] = Query(None),
+    estado: Optional[EstadoCita] = Query(None),
+    usuario_actual: Usuario = Depends(require_role("medico", "admin")),
+    db: Session = Depends(get_db)
+):
+    exigir_zona_horaria(desde, "desde")
+    exigir_zona_horaria(hasta, "hasta")
+
+    consulta = db.query(Cita)
+    if usuario_actual.rol == "medico":
+        # El médico solo ve sus propias citas, aunque mande otro medico_id
+        consulta = consulta.filter(Cita.medico_id == usuario_actual.id)
+    elif medico_id is not None:
+        consulta = consulta.filter(Cita.medico_id == medico_id)
+
+    if paciente_id is not None:
+        consulta = consulta.filter(Cita.paciente_id == paciente_id)
+    if desde:
+        consulta = consulta.filter(Cita.fecha_hora >= desde)
+    if hasta:
+        consulta = consulta.filter(Cita.fecha_hora < hasta)
+    if estado:
+        consulta = consulta.filter(Cita.estado == estado)
+
+    citas = consulta.order_by(Cita.fecha_hora).all()
+
+    if usuario_actual.rol == "medico":
+        registrar_auditoria(db, usuario_actual, "ver_citas", request,
+                            usuario_afectado_id=paciente_id)
+    return citas
+
+
+@app.get("/mis-citas", response_model=list[CitaResponse])
+def listar_mis_citas(
+    solo_proximas: bool = Query(True),
+    usuario_actual: Usuario = Depends(require_role("paciente")),
+    db: Session = Depends(get_db)
+):
+    consulta = db.query(Cita).filter(Cita.paciente_id == usuario_actual.id)
+    if solo_proximas:
+        consulta = consulta.filter(Cita.fecha_hora >= datetime.now(timezone.utc))
+    return consulta.order_by(Cita.fecha_hora).all()
+
+
+@app.patch("/citas/{id}", response_model=CitaResponse)
+def editar_cita(
+    id: int,
+    datos: CitaUpdate,
+    request: Request,
+    usuario_actual: Usuario = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    cita = db.query(Cita).filter(Cita.id == id).first()
+    if not cita:
+        raise HTTPException(status_code=404, detail="Cita no encontrada")
+
+    cambios = datos.model_dump(exclude_unset=True, exclude_none=True)
+    if not cambios:
+        raise HTTPException(status_code=400, detail="No se envió ningún cambio")
+
+    if cita.estado != "programada":
+        raise HTTPException(status_code=400,
+                            detail=f"La cita ya está {cita.estado} y no se puede modificar")
+
+    if "fecha_hora" in cambios or "duracion_minutos" in cambios:
+        validar_horario_cita(
+            db,
+            cita.medico_id,
+            cambios.get("fecha_hora", cita.fecha_hora),
+            cambios.get("duracion_minutos", cita.duracion_minutos),
+            excluir_id=cita.id,
+        )
+
+    campos_cambiados = list(cambios.keys())
+    for campo, valor in cambios.items():
+        setattr(cita, campo, valor)
+
+    db.commit()
+    db.refresh(cita)
+
+    registrar_auditoria(db, usuario_actual, "editar_cita", request,
+                        usuario_afectado_id=cita.paciente_id,
+                        detalle=f"cita_id={cita.id}; campos: " + ", ".join(campos_cambiados))
+    return cita
