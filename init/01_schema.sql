@@ -18,7 +18,7 @@ CREATE TABLE usuarios (
 CREATE TABLE sintomas (
     id SERIAL PRIMARY KEY,
     usuario_id INTEGER REFERENCES usuarios(id),
-    descripcion TEXT NOT NULL,
+    descripcion BYTEA NOT NULL,
     creado_en TIMESTAMP DEFAULT NOW()
 );
 
@@ -27,8 +27,8 @@ CREATE TABLE sintomas (
 CREATE TABLE documentos (
     id SERIAL PRIMARY KEY,
     usuario_id INTEGER REFERENCES usuarios(id),
-    nombre_archivo VARCHAR(255) NOT NULL,
-    ruta_archivo VARCHAR(500) NOT NULL,
+    nombre_archivo BYTEA NOT NULL,
+    contenido BYTEA NOT NULL,
     tipo_archivo VARCHAR(50),
     subido_en TIMESTAMP DEFAULT NOW()
 );
@@ -60,7 +60,7 @@ CREATE TABLE guias_clinicas (
 CREATE TABLE prediagnosticos (
     id SERIAL PRIMARY KEY,
     usuario_id INTEGER REFERENCES usuarios(id),
-    resumen_generado TEXT NOT NULL,
+    resumen_generado BYTEA NOT NULL,
     urgencia_sugerida VARCHAR(20) CHECK (urgencia_sugerida IN ('baja', 'media', 'alta')),
     diagnosticos_diferenciales JSONB,
     revisado_por_medico BOOLEAN DEFAULT FALSE,
@@ -85,7 +85,7 @@ CREATE TABLE ejecuciones_ejercicio (
     ejercicio_id INTEGER REFERENCES ejercicios_recomendados(id),
     usuario_id INTEGER REFERENCES usuarios(id),
     correcto BOOLEAN,
-    comentario TEXT,
+    comentario BYTEA,
     ejecutado_en TIMESTAMP DEFAULT NOW()
 );
 

@@ -9,7 +9,8 @@ load_dotenv()
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
+from urllib.parse import quote
 from sqlalchemy.orm import Session
 from sqlalchemy import text, case
 from sqlalchemy.exc import IntegrityError
@@ -288,15 +289,10 @@ def subir_documento(
     if len(contenido) > TAMANO_MAXIMO_MB * 1024 * 1024:
         raise HTTPException(status_code=400, detail=f"El archivo supera los {TAMANO_MAXIMO_MB}MB")
 
-    nombre_unico = f"{uuid.uuid4()}{extension}"
-    ruta = f"uploads/{nombre_unico}"
-    with open(ruta, "wb") as f:
-        f.write(contenido)
-
     nuevo_doc = Documento(
         usuario_id=usuario_actual.id,
         nombre_archivo=archivo.filename,
-        ruta_archivo=ruta,
+        contenido=contenido,
         tipo_archivo=archivo.content_type,
     )
     db.add(nuevo_doc)
@@ -505,17 +501,18 @@ def descargar_documento_paciente(
         .filter(Documento.id == doc_id, Documento.usuario_id == id)
         .first()
     )
-    if not documento or not os.path.exists(documento.ruta_archivo):
+    if not documento:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
 
     registrar_auditoria(db, usuario_actual, "descargar_documento", request,
                         usuario_afectado_id=id, detalle=f"documento_id={doc_id}")
 
-    return FileResponse(
-        documento.ruta_archivo,
+    return Response(
+        content=documento.contenido,
         media_type=documento.tipo_archivo,
-        filename=documento.nombre_archivo,
-        content_disposition_type="inline",
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(documento.nombre_archivo)}"
+        },
     )
 
 

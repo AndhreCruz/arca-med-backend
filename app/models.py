@@ -3,7 +3,8 @@ from sqlalchemy.sql import func
 from database import Base
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, deferred
+from cifrado import TextoCifrado, BytesCifrados
 
 class Usuario(Base):
     __tablename__ = "usuarios"
@@ -22,7 +23,7 @@ class Sintoma(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     usuario_id = Column(Integer, ForeignKey("usuarios.id"))
-    descripcion = Column(Text, nullable=False)
+    descripcion = Column(TextoCifrado, nullable=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -31,8 +32,8 @@ class Documento(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     usuario_id = Column(Integer, ForeignKey("usuarios.id"))
-    nombre_archivo = Column(String(255), nullable=False)
-    ruta_archivo = Column(String(500), nullable=False)
+    nombre_archivo = Column(TextoCifrado, nullable=False)
+    contenido = deferred(Column(BytesCifrados, nullable=False))
     tipo_archivo = Column(String(50))
     subido_en = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -64,7 +65,7 @@ class Prediagnostico(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     usuario_id = Column(Integer, ForeignKey("usuarios.id"))
-    resumen_generado = Column(Text, nullable=False)
+    resumen_generado = Column(TextoCifrado, nullable=False)
     urgencia_sugerida = Column(String(20))
     diagnosticos_diferenciales = Column(JSONB)
     revisado_por_medico = Column(Boolean, default=False)
@@ -89,7 +90,7 @@ class EjecucionEjercicio(Base):
     ejercicio_id = Column(Integer, ForeignKey("ejercicios_recomendados.id"))
     usuario_id = Column(Integer, ForeignKey("usuarios.id"))
     correcto = Column(Boolean)
-    comentario = Column(Text)
+    comentario = Column(TextoCifrado)
     ejecutado_en = Column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -124,7 +124,8 @@ class DocumentoDetalle(BaseModel):
 class DocumentoResponse(BaseModel):
     id: int
     nombre_archivo: str
-    ruta_archivo: str
+    tipo_archivo: Optional[str] = None
+    subido_en: datetime
 
     class Config:
         from_attributes = True
