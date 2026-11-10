@@ -10,6 +10,25 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U arca -d arcamed"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./app
+    env_file: ./app/.env
+    environment:
+      DATABASE_URL: postgresql://arca:arca123@db:5432/arcamed
+    ports:
+      - "8000:8000"
+    volumes:
+      - imagenes_ejercicios:/app/static/ejercicios
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   pgdata:
+  imagenes_ejercicios:
