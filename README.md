@@ -22,24 +22,16 @@ No es un sistema omnicanal (cada plataforma no ofrece lo mismo) — las funcione
 
 ## Cómo levantar el proyecto
 
-Requisitos: [Docker Desktop](https://www.docker.com/products/docker-desktop/) y Python 3.11+.
+Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/) abierto y corriendo.
+
+### 1. Clonar y crear el `.env`
 
 ```bash
 git clone <URL_DEL_REPO>
 cd arca-med-backend
-
-# 1. Levantar la base de datos
-docker compose up -d
-
-# 2. Levantar el backend
-cd app
-python -m venv venv
-venv\Scripts\activate
-
-pip install -r requirements.txt
 ```
 
-Antes de correr el backend, crea un archivo `.env` dentro de `app/` (no viene en el repo) con:
+Crea un archivo `.env` dentro de `app/` (no viene en el repo) con:
 ```
 DATABASE_URL=postgresql://arca:arca123@localhost:5432/arcamed
 SECRET_KEY=cualquier-texto
@@ -50,24 +42,60 @@ ENCRYPTION_KEY=...
 
 > `OPENAI_API_KEY` es una credencial real que cuesta dinero: pídela por un canal privado del equipo. **Nunca** la subas al repo ni la pegues en este README.
 
-`ENCRYPTION_KEY` es la clave con que se cifran los datos clínicos en la base (ver [Seguridad de los datos](#seguridad-de-los-datos)). Debe ser de 32 bytes codificados en base64. Para generar una:
+`ENCRYPTION_KEY` es la clave con que se cifran los datos clínicos en la base (ver [Seguridad de los datos](#seguridad-de-los-datos)). Debe ser de 32 bytes codificados en base64. Para generar una (con cualquier Python, o pídela al equipo):
 ```bash
 python -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
 ```
 Sin esta variable el backend no arranca. Igual que `OPENAI_API_KEY`, **nunca** se sube al repo. Si se pierde, los datos cifrados con ella no se pueden recuperar (en local basta con recrear la base).
 
-Genera los embeddings de las guías clínicas (solo la primera vez, o cuando se agreguen guías por SQL):
+`CORS_ORIGINS` indica desde qué direcciones puede llamar la web a la API (separadas por coma, sin espacios). Si la web corre en otro puerto, agrégalo aquí. La app Android no necesita esta configuración.
+
+### 2. Levantar todo con Docker (recomendado)
+
+Desde la raíz del proyecto (`arca-med-backend/`):
+
 ```bash
-python generar_embeddings_guias.py
+docker compose up -d --build
 ```
 
-Corre el servidor:
+Esto levanta dos contenedores: `db` (PostgreSQL + pgvector, con los datos iniciales) y `api` (el backend). La primera vez tarda un par de minutos. No hace falta instalar Python.
+
+Solo la primera vez (o después de recrear la base), genera los embeddings de las guías clínicas:
 ```bash
-uvicorn main:app --reload
+docker compose exec api python generar_embeddings_guias.py
 ```
 
 - API corriendo en: `http://localhost:8000`
 - Documentación interactiva (probar todo desde el navegador): `http://localhost:8000/docs`
+
+Dentro de Docker la API se conecta a la base por el nombre del servicio (`db`), no por `localhost`: el `docker-compose.yml` reemplaza `DATABASE_URL` automáticamente, así que el `.env` no se toca.
+
+**Comandos útiles:**
+
+| Comando | Para qué |
+|---|---|
+| `docker compose ps` | Ver si los contenedores están corriendo (`db` debe estar `healthy`) |
+| `docker compose logs api` | Ver los logs o errores del backend (`-f` para seguirlos en vivo) |
+| `docker compose up -d --build` | Aplicar cambios de código (hay que hacer `git pull` primero si los cambios son de otro) |
+| `docker compose stop` | Apagar todo sin borrar datos |
+| `docker compose down -v` | Borrar todo, **incluida la base** (ver [Datos iniciales](#datos-iniciales)) |
+
+### Alternativa: correr el backend sin Docker (para desarrollo)
+
+Útil para desarrollar el backend, porque `--reload` aplica los cambios al guardar. Requiere Python 3.11+. La base sigue en Docker:
+
+```bash
+docker compose up -d db      # solo la base
+docker compose stop api      # si la API de Docker está corriendo, libera el puerto 8000
+
+cd app
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+
+python generar_embeddings_guias.py   # solo la primera vez
+uvicorn main:app --reload
+```
 
 ## Cómo integrar la autenticación (Web / App)
 
@@ -406,14 +434,14 @@ Al levantar la base por primera vez, los scripts de `init/` se ejecutan en orden
 | `04_ejercicios.sql` | 29 ejercicios (3-4 por articulación, sin imagen) |
 | `05_citas.sql` | 9 citas de prueba: 7 programadas en los próximos días (la mayoría con `camila.rojas@arcamed.com`), 1 cancelada y 1 completada. Con motivo administrativo |
 
-Las guías se cargan con `embedding` vacío porque un SQL no puede llamar a OpenAI. Después de levantar la base, ejecutar una vez `python generar_embeddings_guias.py` (dentro de `app/`). Sin este paso, el prediagnóstico no encuentra guías relevantes.
+Las guías se cargan con `embedding` vacío porque un SQL no puede llamar a OpenAI. Después de levantar la base, ejecutar una vez `docker compose exec api python generar_embeddings_guias.py` (o `python generar_embeddings_guias.py` dentro de `app/` si corres el backend sin Docker). Sin este paso, el prediagnóstico no encuentra guías relevantes.
 
 **Importante:** los scripts de `init/` solo se ejecutan cuando el volumen de la base se crea desde cero. Si ya tenías la base levantada y quieres cargar los datos iniciales, o si `01_schema.sql` cambió desde la última vez que la levantaste (por ejemplo, se agregó una columna):
 ```bash
 docker compose down -v   # borra la base local, incluidos tus datos de prueba
-docker compose up -d
+docker compose up -d --build
+docker compose exec api python generar_embeddings_guias.py
 ```
-Después de recrearla, vuelve a correr `python generar_embeddings_guias.py`.
 
 ### Usuarios de prueba
 
