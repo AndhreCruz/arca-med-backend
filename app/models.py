@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Numeric, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Numeric, Boolean, LargeBinary
 from sqlalchemy.sql import func
 from database import Base
 from pgvector.sqlalchemy import Vector
@@ -80,6 +80,8 @@ class EjercicioRecomendado(Base):
     descripcion = Column(Text)
     articulacion = Column(String(50))
     imagen_url = Column(String(500))
+    imagen = deferred(Column(LargeBinary))
+    imagen_tipo = Column(String(50))
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
 
 

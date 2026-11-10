@@ -75,6 +75,8 @@ CREATE TABLE ejercicios_recomendados (
     descripcion TEXT,
     articulacion VARCHAR(50),
     imagen_url VARCHAR(500),
+    imagen BYTEA,
+    imagen_tipo VARCHAR(50),
     creado_en TIMESTAMP DEFAULT NOW()
 );
 

@@ -48,8 +48,6 @@ python -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
 ```
 Sin esta variable el backend no arranca. Igual que `OPENAI_API_KEY`, **nunca** se sube al repo. Si se pierde, los datos cifrados con ella no se pueden recuperar (en local basta con recrear la base).
 
-`CORS_ORIGINS` indica desde qué direcciones puede llamar la web a la API (separadas por coma, sin espacios). Si la web corre en otro puerto, agrégalo aquí. La app Android no necesita esta configuración.
-
 ### 2. Levantar todo con Docker (recomendado)
 
 Desde la raíz del proyecto (`arca-med-backend/`):

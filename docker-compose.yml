@@ -23,12 +23,9 @@ services:
       DATABASE_URL: postgresql://arca:arca123@db:5432/arcamed
     ports:
       - "8000:8000"
-    volumes:
-      - imagenes_ejercicios:/app/static/ejercicios
     depends_on:
       db:
         condition: service_healthy
 
 volumes:
   pgdata:
-  imagenes_ejercicios:

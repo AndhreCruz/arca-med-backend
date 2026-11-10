@@ -8,7 +8,6 @@ load_dotenv()
 
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import Response
 from urllib.parse import quote
 from sqlalchemy.orm import Session
@@ -63,13 +62,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Archivos estaticos publicos (solo imagenes de ejercicios) ---
-os.makedirs("static/ejercicios", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
 # --- Constantes ---
 EXTENSIONES_IMAGEN = {".jpg", ".jpeg", ".png"}
 EXTENSIONES_PERMITIDAS = {".pdf", ".jpg", ".jpeg", ".png"}
+TIPOS_IMAGEN = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
 TAMANO_MAXIMO_MB = 10
 
 orden_urgencia = case(
@@ -557,22 +553,29 @@ def subir_imagen_ejercicio(
     if len(contenido) > TAMANO_MAXIMO_MB * 1024 * 1024:
         raise HTTPException(status_code=400, detail=f"La imagen supera los {TAMANO_MAXIMO_MB}MB")
 
-    if ejercicio.imagen_url:
-        ruta_anterior = ejercicio.imagen_url.lstrip("/")
-        if os.path.exists(ruta_anterior):
-            os.remove(ruta_anterior)
-
-    nombre_unico = f"{uuid.uuid4()}{extension}"
-    with open(f"static/ejercicios/{nombre_unico}", "wb") as f:
-        f.write(contenido)
-
-    ejercicio.imagen_url = f"/static/ejercicios/{nombre_unico}"
+    ejercicio.imagen = contenido
+    ejercicio.imagen_tipo = TIPOS_IMAGEN[extension]
+    # El ?v= cambia en cada subida para que navegador y app no muestren la imagen antigua de su caché
+    ejercicio.imagen_url = f"/ejercicios/{ejercicio.id}/imagen?v={uuid.uuid4().hex[:8]}"
     db.commit()
     db.refresh(ejercicio)
 
     registrar_auditoria(db, usuario_actual, "subir_imagen_ejercicio", request,
                         detalle=f"ejercicio_id={id}")
     return ejercicio
+
+
+@app.get("/ejercicios/{id}/imagen")
+def ver_imagen_ejercicio(id: int, db: Session = Depends(get_db)):
+    ejercicio = db.query(EjercicioRecomendado).filter(EjercicioRecomendado.id == id).first()
+    if not ejercicio or ejercicio.imagen is None:
+        raise HTTPException(status_code=404, detail="Imagen no encontrada")
+
+    return Response(
+        content=ejercicio.imagen,
+        media_type=ejercicio.imagen_tipo,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.get("/ejercicios", response_model=list[EjercicioResponse])
