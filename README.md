@@ -45,9 +45,16 @@ DATABASE_URL=postgresql://arca:arca123@localhost:5432/arcamed
 SECRET_KEY=cualquier-texto
 OPENAI_API_KEY=sk-...
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+ENCRYPTION_KEY=...
 ```
 
 > `OPENAI_API_KEY` es una credencial real que cuesta dinero: pídela por un canal privado del equipo. **Nunca** la subas al repo ni la pegues en este README.
+
+`ENCRYPTION_KEY` es la clave con que se cifran los datos clínicos en la base (ver [Seguridad de los datos](#seguridad-de-los-datos)). Debe ser de 32 bytes codificados en base64. Para generar una:
+```bash
+python -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
+```
+Sin esta variable el backend no arranca. Igual que `OPENAI_API_KEY`, **nunca** se sube al repo. Si se pierde, los datos cifrados con ella no se pueden recuperar (en local basta con recrear la base).
 
 Genera los embeddings de las guías clínicas (solo la primera vez, o cuando se agreguen guías por SQL):
 ```bash
@@ -182,7 +189,7 @@ window.open(URL.createObjectURL(blob), "_blank");
 | Método | Ruta | Descripción |
 |---|---|---|
 | POST | `/sintomas` | Registra un síntoma. Body: `{descripcion}`. Devuelve `{id, descripcion}` al instante. El prediagnóstico con IA se genera en segundo plano y aparece en la bandeja del médico unos segundos después (el paciente no lo ve) |
-| POST | `/documentos` | Sube un documento (PDF/JPG/PNG, máx 10MB). Body: `multipart/form-data` con el archivo en el campo `archivo`. Devuelve `{id, nombre_archivo, ruta_archivo}` |
+| POST | `/documentos` | Sube un documento (PDF/JPG/PNG, máx 10MB). Body: `multipart/form-data` con el archivo en el campo `archivo`. Devuelve `{id, nombre_archivo, tipo_archivo, subido_en}`. El archivo se guarda cifrado en la base de datos |
 | POST | `/metricas` | Registra una métrica de rango de movimiento. Body: `{articulacion, lado, angulo_maximo, angulo_minimo}` (ver reglas de articulaciones abajo). Devuelve `{id, articulacion, lado, angulo_maximo, angulo_minimo}` |
 | GET | `/ejercicios` | Lista el catálogo (también disponible para médico y admin). Filtro opcional: `?articulacion=rodilla`. Devuelve `[{id, nombre_ejercicio, descripcion, articulacion, imagen_url}]` |
 | POST | `/ejercicios/{id}/ejecucion` | Registra que el paciente realizó el ejercicio. Body: `{correcto, comentario}` (comentario opcional). Devuelve `{id, ejercicio_id, correcto, comentario}` |
@@ -256,7 +263,7 @@ Todos los endpoints de citas devuelven el mismo formato:
 ```
 
 - `estado`: `programada`, `completada` o `cancelada`.
-- `motivo` puede venir en `null`.
+- `motivo` es **administrativo**, no clínico: indica el tipo de consulta ("Primera consulta", "Control", "Evaluación de movilidad", "Revisión de exámenes") y puede venir en `null`. Los detalles clínicos van en los síntomas, que se guardan cifrados.
 
 ### Fechas y zona horaria
 
@@ -356,6 +363,15 @@ Modificar (`PATCH /citas/{id}`), solo con los campos a cambiar:
 - Una cita `cancelada` o `completada` ya no se puede modificar (`400`).
 - El paciente debe estar activo, y el médico, existir y estar activo.
 
+## Seguridad de los datos
+
+- **Contraseñas:** se guardan con hash bcrypt, nunca en texto plano.
+- **Acceso por rol:** cada endpoint exige un token JWT y valida el rol (paciente, médico o admin).
+- **Cifrado en la base (AES-256-GCM):** se guardan cifrados el texto de los síntomas, el resumen generado por la IA, los comentarios de las ejecuciones de ejercicios y los documentos (nombre y contenido). El cifrado y descifrado es automático: la API siempre responde con los datos legibles, pero quien acceda directamente a la base solo ve bytes ilegibles. Además, GCM detecta si un dato cifrado fue alterado.
+- **Datos que no se cifran:** ángulos, urgencia, diagnósticos diferenciales, fechas, ids, guías clínicas, ejercicios y el motivo de las citas. No identifican al paciente por sí solos y se necesitan para filtrar y ordenar.
+- **IA:** a OpenAI solo se envía el texto de los síntomas anonimizado (sin RUT, email ni teléfono).
+- **Auditoría:** los accesos de médicos a datos de pacientes y las acciones de administradores quedan registrados en una bitácora inmutable (ver [Auditoría](#auditoría-administrador)).
+
 ## Registro y gestión de usuarios
 
 - El registro público (`/auth/registro`, usado por la app) **siempre crea pacientes**.
@@ -388,7 +404,7 @@ Al levantar la base por primera vez, los scripts de `init/` se ejecutan en orden
 | `02_usuarios.sql` | 10 usuarios de prueba |
 | `03_guias_clinicas.sql` | 16 guías clínicas de kinesiología/traumatología (sin embedding; ver abajo) |
 | `04_ejercicios.sql` | 29 ejercicios (3-4 por articulación, sin imagen) |
-| `05_citas.sql` | 9 citas de prueba: 7 programadas en los próximos días (la mayoría con `camila.rojas@arcamed.com`), 1 cancelada y 1 completada |
+| `05_citas.sql` | 9 citas de prueba: 7 programadas en los próximos días (la mayoría con `camila.rojas@arcamed.com`), 1 cancelada y 1 completada. Con motivo administrativo |
 
 Las guías se cargan con `embedding` vacío porque un SQL no puede llamar a OpenAI. Después de levantar la base, ejecutar una vez `python generar_embeddings_guias.py` (dentro de `app/`). Sin este paso, el prediagnóstico no encuentra guías relevantes.
 
