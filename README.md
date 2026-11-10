@@ -48,6 +48,8 @@ python -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
 ```
 Sin esta variable el backend no arranca. Igual que `OPENAI_API_KEY`, **nunca** se sube al repo. Si se pierde, los datos cifrados con ella no se pueden recuperar (en local basta con recrear la base).
 
+`CORS_ORIGINS` indica desde qué direcciones puede llamar la web a la API (separadas por coma, sin espacios). Si la web corre en otro puerto, agrégalo aquí. La app Android no necesita esta configuración.
+
 ### 2. Levantar todo con Docker (recomendado)
 
 Desde la raíz del proyecto (`arca-med-backend/`):
@@ -189,7 +191,7 @@ window.open(URL.createObjectURL(blob), "_blank");
 
 ### Mostrar imágenes de ejercicios
 
-`imagen_url` es una ruta relativa (ej. `/static/ejercicios/abc.png`). Para mostrarla, anteponer la dirección del servidor: `http://localhost:8000` + `imagen_url`. Estas imágenes son públicas y no requieren token.
+`imagen_url` es una ruta relativa (ej. `/ejercicios/5/imagen?v=3f9a1c2e`), o `null` si el ejercicio no tiene imagen. Para mostrarla, anteponer la dirección del servidor: `http://localhost:8000` + `imagen_url`. Estas imágenes son públicas y no requieren token, así que sirven directo en un `<img src>` o en Coil/Glide. El `?v=...` cambia cada vez que el admin reemplaza la imagen, para que el navegador o la app no muestren la versión antigua guardada en caché.
 
 ### Códigos de error
 
@@ -246,6 +248,7 @@ window.open(URL.createObjectURL(blob), "_blank");
 | POST | `/guias-clinicas` | Carga una guía clínica (genera su embedding automáticamente). Body: `{titulo, contenido}`. Devuelve `{id, titulo}` |
 | POST | `/ejercicios` | Crea un ejercicio del catálogo. Body: `{nombre_ejercicio, descripcion, articulacion}`. Devuelve el ejercicio creado |
 | POST | `/ejercicios/{id}/imagen` | Sube o reemplaza la imagen del ejercicio (JPG/PNG, `multipart/form-data`, campo `archivo`). Devuelve el ejercicio con `imagen_url` |
+| GET | `/ejercicios/{id}/imagen` | **Público** (sin token). Devuelve la imagen del ejercicio. Normalmente no se llama a mano: se usa la `imagen_url` que trae cada ejercicio |
 | GET | `/citas` | Todas las citas. Mismos filtros que el médico, más `?medico_id=` |
 | POST | `/citas` | Registra una cita. Body: `{paciente_id, medico_id, fecha_hora, duracion_minutos, motivo}` (`duracion_minutos` y `motivo` opcionales) |
 | PATCH | `/citas/{id}` | Reprograma, cancela o completa una cita. Se envían **solo** los campos a cambiar: `{fecha_hora, duracion_minutos, motivo, estado}` |
