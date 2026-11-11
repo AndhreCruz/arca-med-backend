@@ -20,6 +20,23 @@ No es un sistema omnicanal (cada plataforma no ofrece lo mismo) — las funcione
 - **App (Android)** — exclusiva para el **paciente**: registro/login, carga de síntomas y documentos, captura de rango de movimiento por cámara, catálogo de ejercicios y sus próximas citas.
 - **Web** — exclusiva para **médico** y **administrador**: el médico ve el dashboard de triage, los resúmenes/prediagnósticos, los síntomas y documentos del paciente y su calendario de citas; el administrador gestiona usuarios, guías clínicas, el catálogo de ejercicios y registra las citas (ver [Citas](#citas)).
 
+## API en producción
+
+La API está desplegada y lista para consumir desde la web y la app:
+
+- **URL base:** `https://arca-med-api.onrender.com`
+- **Documentación interactiva:** `https://arca-med-api.onrender.com/docs`
+
+Todos los endpoints de este README funcionan igual en producción: solo cambia la URL base. Los ejemplos usan `http://localhost:8000`; reemplázalo por la URL de producción. Conviene dejar la URL base en un solo lugar de configuración y no repetirla en cada llamada:
+
+- **Web (Vite):** en un archivo `.env` del proyecto web, `VITE_API_URL=https://arca-med-api.onrender.com`, y en el código `import.meta.env.VITE_API_URL`.
+- **App (Retrofit):** `.baseUrl("https://arca-med-api.onrender.com/")` (con `/` al final). Como es HTTPS, Android no necesita permitir tráfico sin cifrar (`usesCleartextTraffic`).
+
+**A tener en cuenta:**
+- **Primera petición lenta:** el plan gratuito apaga la API tras 15 minutos sin uso, y la siguiente petición tarda alrededor de un minuto en responder mientras se enciende. Después responde normal. Antes de una demo, abre `/docs` unos minutos antes. En la web y la app, conviene mostrar un indicador de carga y no cortar la petición antes de ~60 segundos.
+- **CORS:** la API acepta llamadas de la web desde `http://localhost:5173` y `http://127.0.0.1:5173`. Cuando la web esté desplegada, hay que avisar su dominio para agregarlo.
+- **Datos:** la base de producción tiene los mismos datos de prueba que la local (ver [Usuarios de prueba](#usuarios-de-prueba)). No ingresar datos reales de pacientes.
+
 ## Cómo levantar el proyecto
 
 Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/) abierto y corriendo.
@@ -423,6 +440,18 @@ Reglas para `/metricas`:
 
 Si alguna regla no se cumple, la API responde `422` con el detalle del error. En `/ejercicios` no existe `lado`: un mismo ejercicio sirve para ambos lados.
 
+## Despliegue (mantención)
+
+| Pieza | Servicio | Detalle |
+|---|---|---|
+| API | [Render](https://render.com) (plan gratuito) | Se construye con `app/Dockerfile`. Región Virginia (US East) |
+| Base de datos | [Neon](https://neon.com) (plan gratuito) | PostgreSQL 16 con pgvector. Región AWS US East (N. Virginia) |
+
+- **Actualizar el código:** cada `git push` a `main` redespliega la API automáticamente en Render (tarda unos minutos). El estado y los logs se ven en el panel de Render.
+- **Variables de entorno:** se configuran en Render (*Environment*), no en un `.env`. En producción `SECRET_KEY` y `ENCRYPTION_KEY` son distintas de las locales. **Nunca** se suben al repo, y la `ENCRYPTION_KEY` de producción no debe perderse: sin ella, los datos cifrados no se pueden leer.
+- **Cambios en la estructura de la base:** los scripts de `init/` **no** se ejecutan en Neon. Un cambio de estructura se hace en dos lugares: en `01_schema.sql` (para quien levante la base local desde cero) y con un `ALTER TABLE ...` aplicado a mano en Neon (por ejemplo, desde DBeaver o el SQL Editor de Neon). En Neon **no** se recrea la base, porque se perderían los datos.
+- **Guías nuevas por SQL:** después de insertarlas en Neon, generar sus embeddings ejecutando `generar_embeddings_guias.py` con `DATABASE_URL` apuntando a Neon. Las que se crean con `POST /guias-clinicas` ya generan su embedding solas.
+
 ## Datos iniciales
 
 Al levantar la base por primera vez, los scripts de `init/` se ejecutan en orden y cargan:
@@ -446,7 +475,7 @@ docker compose exec api python generar_embeddings_guias.py
 
 ### Usuarios de prueba
 
-Contraseña de todos: **`Arcamed2026`** (solo para desarrollo local).
+Contraseña de todos: **`Arcamed2026`**, en local y en producción. En producción, las contraseñas de los **admin** son distintas y se comparten por un canal privado del equipo.
 
 | Rol | Email |
 |---|---|
