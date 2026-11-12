@@ -33,7 +33,8 @@ from schemas import (
     EjercicioCreate, EjercicioResponse,
     EjecucionCreate, EjecucionResponse,
     AuditoriaLogResponse, VerificacionAuditoriaResponse,
-    PacienteListado, CitaCreate, CitaUpdate, CitaResponse, EstadoCita
+    PacienteListado, CitaCreate, CitaUpdate, CitaResponse, EstadoCita,
+    PerfilUpdate, PerfilResponse
 )
 from auth import hash_password, verify_password, create_token
 from deps import get_current_user, require_role
@@ -120,12 +121,13 @@ def validar_horario_cita(db: Session, medico_id: int, fecha_hora: datetime,
             raise HTTPException(status_code=409, detail="El médico ya tiene una cita en ese horario")
 
 
-def crear_usuario(db: Session, nombre: str, email: str, password: str, rol: str) -> Usuario:
+def crear_usuario(db: Session, nombre: str, email: str, password: str, rol: str, **datos_extra) -> Usuario:
     usuario = Usuario(
         nombre=nombre,
         email=email,
         password_hash=hash_password(password),
         rol=rol,
+        **datos_extra,
     )
     db.add(usuario)
     try:
@@ -152,7 +154,8 @@ def obtener_paciente_o_404(db: Session, paciente_id: int) -> Usuario:
 def registro(datos: RegistroPaciente, db: Session = Depends(get_db)):
     # El registro publico siempre crea pacientes.
     # Medicos y admins los crea un admin con POST /admin/usuarios.
-    usuario = crear_usuario(db, datos.nombre, datos.email, datos.password, rol="paciente")
+    extra = datos.model_dump(include={"fecha_nacimiento", "sexo", "telefono"}, exclude_none=True)
+    usuario = crear_usuario(db, datos.nombre, datos.email, datos.password, rol="paciente", **extra)
     token = create_token(usuario.id, usuario.rol)
     return {"access_token": token, "rol": usuario.rol}
 
@@ -170,9 +173,27 @@ def login(datos: UsuarioLogin, db: Session = Depends(get_db)):
     return {"access_token": token, "rol": usuario.rol}
 
 
-@app.get("/perfil")
+@app.get("/perfil", response_model=PerfilResponse)
 def leer_mi_perfil(usuario_actual: Usuario = Depends(get_current_user)):
-    return {"id": usuario_actual.id, "nombre": usuario_actual.nombre, "rol": usuario_actual.rol}
+    return usuario_actual
+
+
+@app.patch("/perfil", response_model=PerfilResponse)
+def editar_mi_perfil(
+    datos: PerfilUpdate,
+    usuario_actual: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    cambios = datos.model_dump(exclude_unset=True)
+    if cambios.get("nombre", "") is None:
+        cambios.pop("nombre")  # el nombre no se puede borrar
+
+    for campo, valor in cambios.items():
+        setattr(usuario_actual, campo, valor)
+
+    db.commit()
+    db.refresh(usuario_actual)
+    return usuario_actual
 
 
 @app.get("/admin/usuarios", response_model=list[UsuarioResponse])

@@ -10,7 +10,10 @@ CREATE TABLE usuarios (
     password_hash VARCHAR(255) NOT NULL,
     rol VARCHAR(20) NOT NULL CHECK (rol IN ('paciente', 'medico', 'admin')),
     creado_en TIMESTAMP DEFAULT NOW(),
-    activo BOOLEAN NOT NULL DEFAULT TRUE
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_nacimiento DATE,
+    sexo VARCHAR(20) CHECK (sexo IN ('femenino', 'masculino', 'otro', 'prefiero_no_decir')),
+    telefono BYTEA
 );
 
 

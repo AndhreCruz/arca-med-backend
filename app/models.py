@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Numeric, Boolean, LargeBinary
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Numeric, Boolean, LargeBinary, Date
+from datetime import date
 from sqlalchemy.sql import func
 from database import Base
 from pgvector.sqlalchemy import Vector
@@ -16,6 +17,17 @@ class Usuario(Base):
     rol = Column(String(20), nullable=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
     activo = Column(Boolean, nullable=False, default=True)
+    fecha_nacimiento = Column(Date)
+    sexo = Column(String(20))
+    telefono = Column(TextoCifrado)
+
+    @property
+    def edad(self):
+        if self.fecha_nacimiento is None:
+            return None
+        hoy = date.today()
+        cumplio = (hoy.month, hoy.day) >= (self.fecha_nacimiento.month, self.fecha_nacimiento.day)
+        return hoy.year - self.fecha_nacimiento.year - (0 if cumplio else 1)
 
 
 class Sintoma(Base):

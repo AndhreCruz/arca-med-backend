@@ -1,6 +1,7 @@
+import re 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
 from typing import Literal, Optional
-from datetime import datetime
+from datetime import datetime, date
 from constantes import ARTICULACIONES_VALIDAS, ARTICULACIONES_SIN_LADO, LADOS_VALIDOS
 
 Rol = Literal["paciente", "medico", "admin"]
@@ -8,6 +9,54 @@ Rol = Literal["paciente", "medico", "admin"]
 EstadoCita = Literal["programada", "completada", "cancelada"]
 
 MENSAJE_ZONA_HORARIA = "debe incluir zona horaria, ej: 2026-11-10T10:00:00-03:00"
+
+Sexo = Literal["femenino", "masculino", "otro", "prefiero_no_decir"]
+
+class DatosPerfil(BaseModel):
+    """Datos personales opcionales. Los usa el registro y la edición del perfil."""
+    fecha_nacimiento: Optional[date] = None
+    sexo: Optional[Sexo] = None
+    telefono: Optional[str] = None
+
+    @field_validator("telefono")
+    @classmethod
+    def validar_telefono(cls, valor):
+        if valor is None:
+            return None
+        limpio = valor.replace(" ", "").replace("-", "")
+        if not re.fullmatch(r"\+?\d{8,15}", limpio):
+            raise ValueError("Teléfono inválido. Usa solo números, con o sin + al inicio (ej: +56912345678)")
+        return limpio
+
+    @field_validator("fecha_nacimiento")
+    @classmethod
+    def validar_fecha_nacimiento(cls, valor):
+        if valor is None:
+            return None
+        hoy = date.today()
+        if valor > hoy:
+            raise ValueError("La fecha de nacimiento no puede ser futura")
+        if valor.year < hoy.year - 120:
+            raise ValueError("Fecha de nacimiento inválida")
+        return valor
+
+
+class PerfilUpdate(DatosPerfil):
+    nombre: Optional[str] = Field(None, min_length=2, max_length=150)
+
+
+class PerfilResponse(BaseModel):
+    id: int
+    nombre: str
+    email: str
+    rol: str
+    fecha_nacimiento: Optional[date]
+    edad: Optional[int]
+    sexo: Optional[str]
+    telefono: Optional[str]
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 def validar_password(password: str) -> str:
     if len(password) < 8:
@@ -17,7 +66,7 @@ def validar_password(password: str) -> str:
     return password
 
 
-class RegistroPaciente(BaseModel):
+class RegistroPaciente(DatosPerfil):
     nombre: str = Field(min_length=1, max_length=150)
     email: EmailStr
     password: str
@@ -35,6 +84,7 @@ class RegistroPaciente(BaseModel):
 
 class UsuarioCreateAdmin(RegistroPaciente):
     rol: Rol
+
 
 class UsuarioUpdateAdmin(BaseModel):
     nombre: Optional[str] = Field(default=None, min_length=1, max_length=150)
