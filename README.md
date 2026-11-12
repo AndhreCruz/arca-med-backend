@@ -17,7 +17,7 @@ El objetivo es **apoyar y enriquecer** la consulta, entregando al profesional in
 
 No es un sistema omnicanal (cada plataforma no ofrece lo mismo) — las funciones están repartidas según el rol:
 
-- **App (Android)** — exclusiva para el **paciente**: registro/login, carga de síntomas y documentos, captura de rango de movimiento por cámara, catálogo de ejercicios y sus próximas citas.
+- **App (Android)** — exclusiva para el **paciente**: registro/login, perfil con foto, carga de síntomas y documentos, captura de rango de movimiento por cámara, catálogo de ejercicios y sus próximas citas.
 - **Web** — exclusiva para **médico** y **administrador**: el médico ve el dashboard de triage, los resúmenes/prediagnósticos, los síntomas y documentos del paciente y su calendario de citas; el administrador gestiona usuarios, guías clínicas, el catálogo de ejercicios y registra las citas (ver [Citas](#citas)).
 
 ## API en producción
@@ -214,8 +214,8 @@ window.open(URL.createObjectURL(blob), "_blank");
 
 - `401 Unauthorized` → no se mandó token, es inválido, expiró, o la cuenta fue desactivada → hay que loguear de nuevo.
 - `403 Forbidden` → el token es válido, pero el rol del usuario no tiene permiso para ese endpoint (ej. un paciente llamando a un endpoint de médico). En el login, también indica que la cuenta está desactivada.
-- `400 Bad Request` → la petición no se puede cumplir por una regla del negocio (ej. una cita en una fecha pasada o una cita ya cancelada que se intenta modificar). El mensaje explica el motivo.
-- `404 Not Found` → el recurso no existe (paciente, médico, documento, ejercicio, usuario, cita).
+- `400 Bad Request` → la petición no se puede cumplir por una regla del negocio (ej. una cita en una fecha pasada, una cita ya cancelada que se intenta modificar o un archivo que no es una imagen válida). El mensaje explica el motivo.
+- `404 Not Found` → el recurso no existe (paciente, médico, documento, ejercicio, usuario, cita, foto de perfil).
 - `409 Conflict` → el médico ya tiene una cita en ese horario.
 - `422 Unprocessable Entity` → el body no cumple las reglas (campo faltante, contraseña corta, articulación inválida, fecha sin zona horaria, etc.). La respuesta trae el detalle del error.
 
@@ -225,9 +225,20 @@ window.open(URL.createObjectURL(blob), "_blank");
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| POST | `/auth/registro` | Crea una cuenta de **paciente** (el rol no se elige). Body: `{nombre, email, password}`. Devuelve `{access_token, rol}` |
+| POST | `/auth/registro` | Crea una cuenta de **paciente** (el rol no se elige). Body: `{nombre, email, password}` y, opcionales, `{fecha_nacimiento, sexo, telefono}` (ver [Perfil](#perfil)). Devuelve `{access_token, rol}` |
 | POST | `/auth/inicio-sesion` | Inicia sesión. Body: `{email, password}`. Devuelve `{access_token, rol}` |
-| GET | `/perfil` | Cualquier usuario logueado. Devuelve los datos del dueño del token |
+
+### Perfil (cualquier usuario logueado)
+
+Cada usuario ve y edita **solo su propio** perfil (el del dueño del token). Detalles y ejemplos en la sección [Perfil](#perfil).
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/perfil` | Devuelve `{id, nombre, email, rol, fecha_nacimiento, edad, sexo, telefono, foto_url}` |
+| PATCH | `/perfil` | Edita los datos propios. Se envían **solo** los campos a cambiar: `{nombre, fecha_nacimiento, sexo, telefono}`. Un campo con `null` se borra (salvo `nombre`). Devuelve el perfil actualizado |
+| POST | `/perfil/foto` | Sube o reemplaza la foto de perfil (JPG/PNG, máx 5MB, `multipart/form-data`, campo `archivo`). Devuelve el perfil con la nueva `foto_url` |
+| GET | `/perfil/foto` | Devuelve la foto de perfil (JPG). **Requiere token** |
+| DELETE | `/perfil/foto` | Quita la foto de perfil. Devuelve el perfil con `foto_url: null` |
 
 ### Paciente (App)
 
@@ -280,6 +291,70 @@ window.open(URL.createObjectURL(blob), "_blank");
 **Qué se registra:** cada vez que un médico accede a datos de un paciente (`ver_pacientes`, `ver_triage`, `ver_resumen`, `revisar_prediagnostico`, `ver_sintomas`, `ver_documentos`, `descargar_documento`) y cada acción de un admin (`crear_usuario`, `editar_usuario`, `crear_guia`, `crear_ejercicio`, `subir_imagen_ejercicio`, `crear_cita`, `editar_cita`). También se registra cuando el médico consulta su calendario (`ver_citas`). Al editar un usuario se guardan solo los nombres de los campos cambiados, nunca sus valores (por ejemplo, nunca la contraseña).
 
 **Cómo se protege:** los registros no se pueden modificar ni borrar (triggers en la base de datos). Además, cada registro guarda el hash SHA-256 del anterior, formando una cadena: si alguien altera un registro directamente en la base, `/auditoria/verificar` lo detecta e indica cuál.
+
+## Perfil
+
+### Datos del perfil
+
+`GET /perfil` devuelve:
+
+```json
+{
+  "id": 6,
+  "nombre": "Juan Pérez",
+  "email": "juan.perez@arcamed.com",
+  "rol": "paciente",
+  "fecha_nacimiento": "1990-05-20",
+  "edad": 36,
+  "sexo": "masculino",
+  "telefono": "+56912345678",
+  "foto_url": "/perfil/foto?v=a1b2c3d4"
+}
+```
+
+- `fecha_nacimiento`, `sexo`, `telefono` y `foto_url` pueden venir en `null` si el usuario no los ha ingresado.
+- **`edad` no se envía nunca:** la API la calcula a partir de `fecha_nacimiento`, así siempre está al día.
+- **`fecha_nacimiento`:** formato `AAAA-MM-DD` (ej. `"1990-05-20"`). No puede ser futura.
+- **`sexo`:** uno de `femenino`, `masculino`, `otro` o `prefiero_no_decir`.
+- **`telefono`:** solo números, con o sin `+` al inicio, entre 8 y 15 dígitos. Se aceptan espacios y guiones (`+56 9 1234-5678`), pero se guarda limpio (`+56912345678`).
+- Estos tres campos se pueden enviar al registrarse (`POST /auth/registro`) o después con `PATCH /perfil`. Si no cumplen las reglas, la API responde `422`.
+
+Editar (`PATCH /perfil`), solo con lo que cambia:
+```json
+{"telefono": "+56987654321", "sexo": "femenino"}
+```
+Para borrar un dato: `{"telefono": null}`. El email y la contraseña no se cambian aquí.
+
+### Foto de perfil
+
+**Subir (`POST /perfil/foto`):** igual que `/documentos`, con `multipart/form-data` y el archivo en el campo `archivo`.
+
+```kotlin
+@Multipart
+@POST("perfil/foto")
+suspend fun subirFotoPerfil(
+    @Header("Authorization") token: String,
+    @Part archivo: MultipartBody.Part
+): PerfilResponse
+```
+
+La API recorta la foto al centro para dejarla **cuadrada (512 × 512)**, la comprime a JPG y elimina sus metadatos (por ejemplo, la ubicación GPS que guardan algunas fotos del celular). No hace falta procesarla antes en la app.
+
+**Mostrar:** `foto_url` es una ruta relativa: anteponer la URL base (`https://arca-med-api.onrender.com` + `foto_url`). A diferencia de las imágenes de ejercicios, **la foto es privada**: hay que pedirla con el token. Con Coil:
+
+```kotlin
+AsyncImage(
+    model = ImageRequest.Builder(LocalContext.current)
+        .data(BASE_URL + perfil.foto_url)
+        .addHeader("Authorization", "Bearer $accessToken")
+        .build(),
+    contentDescription = "Foto de perfil",
+    modifier = Modifier.size(96.dp).clip(CircleShape),
+    contentScale = ContentScale.Crop
+)
+```
+
+Si `foto_url` es `null`, mostrar un avatar por defecto (por ejemplo, la inicial del nombre). El `?v=...` cambia cada vez que se sube una foto nueva, así la app no muestra la anterior guardada en caché.
 
 ## Citas
 
@@ -413,8 +488,9 @@ Modificar (`PATCH /citas/{id}`), solo con los campos a cambiar:
 
 - **Contraseñas:** se guardan con hash bcrypt, nunca en texto plano.
 - **Acceso por rol:** cada endpoint exige un token JWT y valida el rol (paciente, médico o admin).
-- **Cifrado en la base (AES-256-GCM):** se guardan cifrados el texto de los síntomas, el resumen generado por la IA, los comentarios de las ejecuciones de ejercicios y los documentos (nombre y contenido). El cifrado y descifrado es automático: la API siempre responde con los datos legibles, pero quien acceda directamente a la base solo ve bytes ilegibles. Además, GCM detecta si un dato cifrado fue alterado.
-- **Datos que no se cifran:** ángulos, urgencia, diagnósticos diferenciales, fechas, ids, guías clínicas, ejercicios y el motivo de las citas. No identifican al paciente por sí solos y se necesitan para filtrar y ordenar.
+- **Cifrado en la base (AES-256-GCM):** se guardan cifrados el texto de los síntomas, el resumen generado por la IA, los comentarios de las ejecuciones de ejercicios, los documentos (nombre y contenido), el teléfono y la foto de perfil. El cifrado y descifrado es automático: la API siempre responde con los datos legibles, pero quien acceda directamente a la base solo ve bytes ilegibles. Además, GCM detecta si un dato cifrado fue alterado.
+- **Datos que no se cifran:** ángulos, urgencia, diagnósticos diferenciales, fechas (incluida la de nacimiento), sexo, ids, guías clínicas, ejercicios y el motivo de las citas. No identifican al paciente por sí solos y se necesitan para filtrar y ordenar.
+- **Fotos de perfil:** al subirlas se eliminan sus metadatos EXIF (que pueden incluir la ubicación GPS donde se tomó la foto).
 - **IA:** a OpenAI solo se envía el texto de los síntomas anonimizado (sin RUT, email ni teléfono).
 - **Auditoría:** los accesos de médicos a datos de pacientes y las acciones de administradores quedan registrados en una bitácora inmutable (ver [Auditoría](#auditoría-administrador)).
 
@@ -439,18 +515,6 @@ Reglas para `/metricas`:
 - `angulo_minimo` no puede ser mayor que `angulo_maximo`.
 
 Si alguna regla no se cumple, la API responde `422` con el detalle del error. En `/ejercicios` no existe `lado`: un mismo ejercicio sirve para ambos lados.
-
-## Despliegue (mantención)
-
-| Pieza | Servicio | Detalle |
-|---|---|---|
-| API | [Render](https://render.com) (plan gratuito) | Se construye con `app/Dockerfile`. Región Virginia (US East) |
-| Base de datos | [Neon](https://neon.com) (plan gratuito) | PostgreSQL 16 con pgvector. Región AWS US East (N. Virginia) |
-
-- **Actualizar el código:** cada `git push` a `main` redespliega la API automáticamente en Render (tarda unos minutos). El estado y los logs se ven en el panel de Render.
-- **Variables de entorno:** se configuran en Render (*Environment*), no en un `.env`. En producción `SECRET_KEY` y `ENCRYPTION_KEY` son distintas de las locales. **Nunca** se suben al repo, y la `ENCRYPTION_KEY` de producción no debe perderse: sin ella, los datos cifrados no se pueden leer.
-- **Cambios en la estructura de la base:** los scripts de `init/` **no** se ejecutan en Neon. Un cambio de estructura se hace en dos lugares: en `01_schema.sql` (para quien levante la base local desde cero) y con un `ALTER TABLE ...` aplicado a mano en Neon (por ejemplo, desde DBeaver o el SQL Editor de Neon). En Neon **no** se recrea la base, porque se perderían los datos.
-- **Guías nuevas por SQL:** después de insertarlas en Neon, generar sus embeddings ejecutando `generar_embeddings_guias.py` con `DATABASE_URL` apuntando a Neon. Las que se crean con `POST /guias-clinicas` ya generan su embedding solas.
 
 ## Datos iniciales
 
