@@ -13,7 +13,9 @@ CREATE TABLE usuarios (
     activo BOOLEAN NOT NULL DEFAULT TRUE,
     fecha_nacimiento DATE,
     sexo VARCHAR(20) CHECK (sexo IN ('femenino', 'masculino', 'otro', 'prefiero_no_decir')),
-    telefono BYTEA
+    telefono BYTEA,
+    foto BYTEA,
+    foto_version VARCHAR(8)
 );
 
 

@@ -54,6 +54,7 @@ class PerfilResponse(BaseModel):
     edad: Optional[int]
     sexo: Optional[str]
     telefono: Optional[str]
+    foto_url: Optional[str]
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -44,6 +44,8 @@ from llm import generar_prediagnostico
 from pipeline import generar_prediagnostico_en_segundo_plano
 from auditoria import registrar_auditoria, verificar_cadena
 from datetime import datetime, timedelta, timezone
+from PIL import UnidentifiedImageError
+from imagenes import procesar_foto_perfil
 from constantes import ARTICULACIONES_VALIDAS
 
 app = FastAPI()
@@ -68,6 +70,7 @@ EXTENSIONES_IMAGEN = {".jpg", ".jpeg", ".png"}
 EXTENSIONES_PERMITIDAS = {".pdf", ".jpg", ".jpeg", ".png"}
 TIPOS_IMAGEN = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
 TAMANO_MAXIMO_MB = 10
+TAMANO_MAXIMO_FOTO_MB = 5
 
 orden_urgencia = case(
     (Prediagnostico.urgencia_sugerida == "alta", 1),
@@ -191,6 +194,55 @@ def editar_mi_perfil(
     for campo, valor in cambios.items():
         setattr(usuario_actual, campo, valor)
 
+    db.commit()
+    db.refresh(usuario_actual)
+    return usuario_actual
+
+
+@app.post("/perfil/foto", response_model=PerfilResponse)
+def subir_foto_perfil(
+    archivo: UploadFile = File(...),
+    usuario_actual: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    extension = os.path.splitext(archivo.filename)[1].lower()
+    if extension not in EXTENSIONES_IMAGEN:
+        raise HTTPException(status_code=400, detail="Solo se permiten imagenes JPG o PNG")
+
+    contenido = archivo.file.read()
+    if len(contenido) > TAMANO_MAXIMO_FOTO_MB * 1024 * 1024:
+        raise HTTPException(status_code=400, detail=f"La imagen supera los {TAMANO_MAXIMO_FOTO_MB}MB")
+
+    try:
+        usuario_actual.foto = procesar_foto_perfil(contenido)
+    except UnidentifiedImageError:
+        raise HTTPException(status_code=400, detail="El archivo no es una imagen valida")
+
+    usuario_actual.foto_version = uuid.uuid4().hex[:8]
+    db.commit()
+    db.refresh(usuario_actual)
+    return usuario_actual
+
+
+@app.get("/perfil/foto")
+def ver_foto_perfil(usuario_actual: Usuario = Depends(get_current_user)):
+    if usuario_actual.foto is None:
+        raise HTTPException(status_code=404, detail="No tienes foto de perfil")
+
+    return Response(
+        content=usuario_actual.foto,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
+@app.delete("/perfil/foto", response_model=PerfilResponse)
+def borrar_foto_perfil(
+    usuario_actual: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    usuario_actual.foto = None
+    usuario_actual.foto_version = None
     db.commit()
     db.refresh(usuario_actual)
     return usuario_actual

@@ -20,6 +20,8 @@ class Usuario(Base):
     fecha_nacimiento = Column(Date)
     sexo = Column(String(20))
     telefono = Column(TextoCifrado)
+    foto = deferred(Column(BytesCifrados))
+    foto_version = Column(String(8))
 
     @property
     def edad(self):
@@ -28,6 +30,12 @@ class Usuario(Base):
         hoy = date.today()
         cumplio = (hoy.month, hoy.day) >= (self.fecha_nacimiento.month, self.fecha_nacimiento.day)
         return hoy.year - self.fecha_nacimiento.year - (0 if cumplio else 1)
+
+    @property
+    def foto_url(self):
+        if self.foto_version is None:
+            return None
+        return f"/perfil/foto?v={self.foto_version}"
 
 
 class Sintoma(Base):
