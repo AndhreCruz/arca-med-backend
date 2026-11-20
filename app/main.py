@@ -42,7 +42,7 @@ from deps import get_current_user, require_role
 from embeddings import generar_embedding, buscar_guias_relevantes
 from anonimizar import anonimizar_texto
 from llm import generar_prediagnostico
-from pipeline import generar_prediagnostico_en_segundo_plano
+from pipeline import generar_prediagnostico_en_segundo_plano, generar_prediagnostico_cita_en_segundo_plano
 from auditoria import registrar_auditoria, verificar_cadena
 from datetime import datetime, timedelta, timezone
 from PIL import UnidentifiedImageError
@@ -1004,9 +1004,6 @@ def enviar_preconsulta(
     cita.preconsulta_enviada_en = datetime.now(timezone.utc)
     db.commit()
 
-    background_tasks.add_task(
-        generar_prediagnostico_en_segundo_plano,
-        usuario_actual.id,
-        sintoma.descripcion,
-    )
+    background_tasks.add_task(generar_prediagnostico_cita_en_segundo_plano, cita.id)
+    
     return {"cita_id": cita.id, "preconsulta_enviada_en": cita.preconsulta_enviada_en}
