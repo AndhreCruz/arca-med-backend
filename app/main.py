@@ -34,7 +34,8 @@ from schemas import (
     EjecucionCreate, EjecucionResponse,
     AuditoriaLogResponse, VerificacionAuditoriaResponse,
     PacienteListado, CitaCreate, CitaUpdate, CitaResponse, EstadoCita,
-    PerfilUpdate, PerfilResponse, EspecialidadResponse
+    PerfilUpdate, PerfilResponse, EspecialidadResponse,
+    SintomaPreconsultaCreate, SintomaPreconsultaResponse, MetricaPreconsultaCreate, PreconsultaEnviadaResponse
 )
 from auth import hash_password, verify_password, create_token
 from deps import get_current_user, require_role
@@ -46,7 +47,7 @@ from auditoria import registrar_auditoria, verificar_cadena
 from datetime import datetime, timedelta, timezone
 from PIL import UnidentifiedImageError
 from imagenes import procesar_foto_perfil
-from constantes import ARTICULACIONES_VALIDAS
+from constantes import ARTICULACIONES_VALIDAS, ARTICULACIONES_SIN_LADO
 
 app = FastAPI()
 
@@ -82,6 +83,40 @@ orden_urgencia = case(
 DURACION_MAXIMA_CITA = 180  # minutos, igual que el CHECK de la tabla
 
 
+def obtener_cita_para_preconsulta(db: Session, cita_id: int, paciente: Usuario) -> Cita:
+    cita = db.query(Cita).filter(Cita.id == cita_id, Cita.paciente_id == paciente.id).first()
+    if not cita:
+        raise HTTPException(status_code=404, detail="Cita no encontrada")
+    if cita.estado != "programada" or cita.fecha_hora <= datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=400,
+            detail="La pre-consulta solo está disponible para citas programadas que aún no ocurren",
+        )
+    return cita
+
+
+def guardar_documento(db: Session, usuario: Usuario, archivo: UploadFile, cita_id: Optional[int] = None) -> Documento:
+    extension = os.path.splitext(archivo.filename)[1].lower()
+    if extension not in EXTENSIONES_PERMITIDAS:
+        raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
+
+    contenido = archivo.file.read()
+    if len(contenido) > TAMANO_MAXIMO_MB * 1024 * 1024:
+        raise HTTPException(status_code=400, detail=f"El archivo supera los {TAMANO_MAXIMO_MB}MB")
+
+    documento = Documento(
+        usuario_id=usuario.id,
+        cita_id=cita_id,
+        nombre_archivo=archivo.filename,
+        contenido=contenido,
+        tipo_archivo=archivo.content_type,
+    )
+    db.add(documento)
+    db.commit()
+    db.refresh(documento)
+    return documento
+
+
 def obtener_medico_o_404(db: Session, medico_id: int) -> Usuario:
     medico = (
         db.query(Usuario)
@@ -108,8 +143,6 @@ def validar_horario_cita(db: Session, medico_id: int, fecha_hora: datetime,
 
     fin = fecha_hora + timedelta(minutes=duracion_minutos)
 
-    # Citas del médico que podrían cruzarse: empiezan antes de que termine la nueva
-    # y no tan atrás como para haber terminado antes de que la nueva empiece.
     candidatas = db.query(Cita).filter(
         Cita.medico_id == medico_id,
         Cita.estado == "programada",
@@ -350,24 +383,7 @@ def subir_documento(
     usuario_actual: Usuario = Depends(require_role("paciente")),
     db: Session = Depends(get_db)
 ):
-    extension = os.path.splitext(archivo.filename)[1].lower()
-    if extension not in EXTENSIONES_PERMITIDAS:
-        raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
-
-    contenido = archivo.file.read()
-    if len(contenido) > TAMANO_MAXIMO_MB * 1024 * 1024:
-        raise HTTPException(status_code=400, detail=f"El archivo supera los {TAMANO_MAXIMO_MB}MB")
-
-    nuevo_doc = Documento(
-        usuario_id=usuario_actual.id,
-        nombre_archivo=archivo.filename,
-        contenido=contenido,
-        tipo_archivo=archivo.content_type,
-    )
-    db.add(nuevo_doc)
-    db.commit()
-    db.refresh(nuevo_doc)
-    return nuevo_doc
+    return guardar_documento(db, usuario_actual, archivo)
 
 
 @app.post("/metricas", response_model=MetricaResponse)
@@ -874,3 +890,123 @@ def listar_especialidades(
     db: Session = Depends(get_db)
 ):
     return db.query(Especialidad).order_by(Especialidad.area.desc(), Especialidad.nombre).all()
+
+
+# ---------- Pre-consulta por cita (paciente) ----------
+
+@app.post("/mis-citas/{cita_id}/sintomas", response_model=SintomaPreconsultaResponse)
+def registrar_sintomas_cita(
+    cita_id: int,
+    datos: SintomaPreconsultaCreate,
+    usuario_actual: Usuario = Depends(require_role("paciente")),
+    db: Session = Depends(get_db)
+):
+    cita = obtener_cita_para_preconsulta(db, cita_id, usuario_actual)
+    if cita.preconsulta_enviada_en is not None:
+        raise HTTPException(status_code=400, detail="La pre-consulta ya fue enviada; los síntomas no se pueden modificar")
+
+    # Articulación: debe ser de la especialidad. Si la especialidad tiene una sola, se asigna sola.
+    permitidas = cita.articulaciones
+    articulacion = datos.articulacion
+    if articulacion is None:
+        if len(permitidas) != 1:
+            raise HTTPException(status_code=400, detail=f"Debes indicar la articulación. Opciones: {permitidas}")
+        articulacion = permitidas[0]
+    if articulacion not in permitidas:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Para {cita.especialidad_nombre} solo se puede evaluar: {permitidas}",
+        )
+
+    # Lado: obligatorio salvo en cervical y lumbar, donde no se acepta.
+    lado = datos.lado
+    if articulacion in ARTICULACIONES_SIN_LADO:
+        if lado is not None:
+            raise HTTPException(status_code=400, detail=f"La articulación {articulacion} no lleva lado")
+    elif lado is None:
+        raise HTTPException(status_code=400, detail="Debes indicar el lado: izquierdo o derecho")
+
+    sintoma = db.query(Sintoma).filter(Sintoma.cita_id == cita.id).first()
+    if sintoma is None:
+        sintoma = Sintoma(usuario_id=usuario_actual.id, cita_id=cita.id)
+        db.add(sintoma)
+    elif (sintoma.articulacion, sintoma.lado) != (articulacion, lado):
+        # Si ya escaneó una articulación, no puede cambiarla: la medición quedaría incoherente.
+        tiene_metricas = db.query(MetricaFisica).filter(MetricaFisica.cita_id == cita.id).first()
+        if tiene_metricas:
+            raise HTTPException(
+                status_code=400,
+                detail="Ya registraste una evaluación articular; no puedes cambiar la articulación ni el lado",
+            )
+
+    sintoma.descripcion = datos.descripcion
+    sintoma.articulacion = articulacion
+    sintoma.lado = lado
+    db.commit()
+    db.refresh(sintoma)
+    return sintoma
+
+
+@app.post("/mis-citas/{cita_id}/documentos", response_model=DocumentoResponse)
+def subir_documento_cita(
+    cita_id: int,
+    archivo: UploadFile = File(...),
+    usuario_actual: Usuario = Depends(require_role("paciente")),
+    db: Session = Depends(get_db)
+):
+    cita = obtener_cita_para_preconsulta(db, cita_id, usuario_actual)
+    return guardar_documento(db, usuario_actual, archivo, cita_id=cita.id)
+
+
+@app.post("/mis-citas/{cita_id}/metricas", response_model=MetricaResponse)
+def registrar_metrica_cita(
+    cita_id: int,
+    datos: MetricaPreconsultaCreate,
+    usuario_actual: Usuario = Depends(require_role("paciente")),
+    db: Session = Depends(get_db)
+):
+    cita = obtener_cita_para_preconsulta(db, cita_id, usuario_actual)
+
+    sintoma = db.query(Sintoma).filter(Sintoma.cita_id == cita.id).first()
+    if sintoma is None:
+        raise HTTPException(status_code=400, detail="Primero registra tus síntomas para esta cita")
+
+    # La articulación y el lado salen de lo que el paciente declaró en sus síntomas
+    metrica = MetricaFisica(
+        usuario_id=usuario_actual.id,
+        cita_id=cita.id,
+        articulacion=sintoma.articulacion,
+        lado=sintoma.lado,
+        angulo_maximo=datos.angulo_maximo,
+        angulo_minimo=datos.angulo_minimo,
+    )
+    db.add(metrica)
+    db.commit()
+    db.refresh(metrica)
+    return metrica
+
+
+@app.post("/mis-citas/{cita_id}/preconsulta/enviar", response_model=PreconsultaEnviadaResponse)
+def enviar_preconsulta(
+    cita_id: int,
+    background_tasks: BackgroundTasks,
+    usuario_actual: Usuario = Depends(require_role("paciente")),
+    db: Session = Depends(get_db)
+):
+    cita = obtener_cita_para_preconsulta(db, cita_id, usuario_actual)
+    if cita.preconsulta_enviada_en is not None:
+        raise HTTPException(status_code=400, detail="La pre-consulta ya fue enviada")
+
+    sintoma = db.query(Sintoma).filter(Sintoma.cita_id == cita.id).first()
+    if sintoma is None:
+        raise HTTPException(status_code=400, detail="Debes registrar tus síntomas antes de enviar")
+
+    cita.preconsulta_enviada_en = datetime.now(timezone.utc)
+    db.commit()
+
+    background_tasks.add_task(
+        generar_prediagnostico_en_segundo_plano,
+        usuario_actual.id,
+        sintoma.descripcion,
+    )
+    return {"cita_id": cita.id, "preconsulta_enviada_en": cita.preconsulta_enviada_en}

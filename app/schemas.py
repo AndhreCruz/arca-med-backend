@@ -147,6 +147,9 @@ class SintomaDetalle(BaseModel):
     id: int
     descripcion: str
     creado_en: datetime
+    cita_id: Optional[int] = None
+    articulacion: Optional[str] = None
+    lado: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -385,3 +388,35 @@ class EspecialidadResponse(BaseModel):
     articulaciones: list[str]
 
     model_config = ConfigDict(from_attributes=True)
+    
+    
+class SintomaPreconsultaCreate(SintomaCreate):
+    articulacion: Optional[str] = None
+    lado: Optional[Literal["izquierdo", "derecho"]] = None
+
+
+class SintomaPreconsultaResponse(BaseModel):
+    id: int
+    cita_id: int
+    descripcion: str
+    articulacion: str
+    lado: Optional[str]
+    creado_en: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MetricaPreconsultaCreate(BaseModel):
+    angulo_maximo: float = Field(ge=0, le=180)
+    angulo_minimo: float = Field(ge=0, le=180)
+
+    @model_validator(mode="after")
+    def validar_rango(self):
+        if self.angulo_minimo > self.angulo_maximo:
+            raise ValueError("angulo_minimo no puede ser mayor que angulo_maximo")
+        return self
+
+
+class PreconsultaEnviadaResponse(BaseModel):
+    cita_id: int
+    preconsulta_enviada_en: datetime
