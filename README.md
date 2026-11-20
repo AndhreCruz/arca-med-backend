@@ -34,7 +34,7 @@ Todos los endpoints de este README funcionan igual en producción: solo cambia l
 
 **A tener en cuenta:**
 - **Primera petición lenta:** el plan gratuito apaga la API tras 15 minutos sin uso, y la siguiente petición tarda alrededor de un minuto en responder mientras se enciende. Después responde normal. Antes de una demo, abre `/docs` unos minutos antes. En la web y la app, conviene mostrar un indicador de carga y no cortar la petición antes de ~60 segundos.
-- **CORS:** la API acepta llamadas de la web desde `http://localhost:5173` y `http://127.0.0.1:5173`. Cuando la web esté desplegada, hay que avisar su dominio para agregarlo.
+- **CORS:** la API acepta llamadas de la web desplegada (`https://arcamed.vercel.app`) y de `http://localhost:5173` / `http://127.0.0.1:5173` para desarrollo. Las URLs de vista previa de Vercel no están habilitadas: si se necesita una, hay que pedir que se agregue.
 - **Datos:** la base de producción tiene los mismos datos de prueba que la local (ver [Usuarios de prueba](#usuarios-de-prueba)). No ingresar datos reales de pacientes.
 
 ## Cómo levantar el proyecto
