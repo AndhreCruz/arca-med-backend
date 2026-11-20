@@ -164,3 +164,27 @@ CREATE TABLE citas (
 
 CREATE INDEX idx_citas_medico_fecha ON citas(medico_id, fecha_hora);
 CREATE INDEX idx_citas_paciente ON citas(paciente_id);
+
+
+-- ===================== PRE-CONSULTA POR CITA =====================
+-- Va al final porque estas columnas referencian a "citas", que se crea más arriba.
+
+ALTER TABLE sintomas
+    ADD COLUMN cita_id INTEGER UNIQUE REFERENCES citas(id),
+    ADD COLUMN articulacion VARCHAR(20),
+    ADD COLUMN lado VARCHAR(10) CHECK (lado IN ('izquierdo', 'derecho'));
+
+ALTER TABLE documentos
+    ADD COLUMN cita_id INTEGER REFERENCES citas(id);
+
+ALTER TABLE metricas_fisicas
+    ADD COLUMN cita_id INTEGER REFERENCES citas(id);
+
+ALTER TABLE prediagnosticos
+    ADD COLUMN cita_id INTEGER UNIQUE REFERENCES citas(id);
+
+ALTER TABLE citas
+    ADD COLUMN preconsulta_enviada_en TIMESTAMPTZ;
+
+CREATE INDEX idx_documentos_cita ON documentos(cita_id);
+CREATE INDEX idx_metricas_cita ON metricas_fisicas(cita_id);

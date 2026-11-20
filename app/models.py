@@ -45,6 +45,9 @@ class Sintoma(Base):
     usuario_id = Column(Integer, ForeignKey("usuarios.id"))
     descripcion = Column(TextoCifrado, nullable=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
+    cita_id = Column(Integer, ForeignKey("citas.id"), unique=True)
+    articulacion = Column(String(20))
+    lado = Column(String(10))
 
 
 class Documento(Base):
@@ -56,6 +59,8 @@ class Documento(Base):
     contenido = deferred(Column(BytesCifrados, nullable=False))
     tipo_archivo = Column(String(50))
     subido_en = Column(DateTime(timezone=True), server_default=func.now())
+    cita_id = Column(Integer, ForeignKey("citas.id"))
+    
 
 
 class MetricaFisica(Base):
@@ -68,6 +73,8 @@ class MetricaFisica(Base):
     angulo_minimo = Column(Numeric(5, 2))
     medido_en = Column(DateTime(timezone=True), server_default=func.now())
     lado = Column(String(10))
+    cita_id = Column(Integer, ForeignKey("citas.id"))
+
     
 
 class GuiaClinica(Base):
@@ -90,6 +97,8 @@ class Prediagnostico(Base):
     diagnosticos_diferenciales = Column(JSONB)
     revisado_por_medico = Column(Boolean, default=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
+    cita_id = Column(Integer, ForeignKey("citas.id"), unique=True)
+
 
 
 class EjercicioRecomendado(Base):
@@ -155,6 +164,7 @@ class Cita(Base):
     medico = relationship("Usuario", foreign_keys=[medico_id])
     especialidad_id = Column(Integer, ForeignKey("especialidades.id"), nullable=False)
     especialidad = relationship("Especialidad")
+    preconsulta_enviada_en = Column(DateTime(timezone=True))
 
     @property
     def paciente_nombre(self):
