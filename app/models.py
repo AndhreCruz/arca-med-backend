@@ -3,7 +3,7 @@ from datetime import date
 from sqlalchemy.sql import func
 from database import Base
 from pgvector.sqlalchemy import Vector
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from sqlalchemy.orm import relationship, deferred
 from cifrado import TextoCifrado, BytesCifrados
 
@@ -131,6 +131,15 @@ class AuditoriaLog(Base):
     hash = Column(String(64), nullable=False)
 
 
+class Especialidad(Base):
+    __tablename__ = "especialidades"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(100), unique=True, nullable=False)
+    area = Column(String(20), nullable=False)
+    articulaciones = Column(ARRAY(String), nullable=False)
+
+
 class Cita(Base):
     __tablename__ = "citas"
 
@@ -142,9 +151,10 @@ class Cita(Base):
     motivo = Column(Text)
     estado = Column(String(20), nullable=False, default="programada")
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
-
     paciente = relationship("Usuario", foreign_keys=[paciente_id])
     medico = relationship("Usuario", foreign_keys=[medico_id])
+    especialidad_id = Column(Integer, ForeignKey("especialidades.id"), nullable=False)
+    especialidad = relationship("Especialidad")
 
     @property
     def paciente_nombre(self):
@@ -153,3 +163,11 @@ class Cita(Base):
     @property
     def medico_nombre(self):
         return self.medico.nombre
+    
+    @property
+    def especialidad_nombre(self):
+        return self.especialidad.nombre
+
+    @property
+    def articulaciones(self):
+        return self.especialidad.articulaciones

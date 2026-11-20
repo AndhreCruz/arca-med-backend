@@ -334,6 +334,7 @@ class PacienteListado(BaseModel):
 class CitaCreate(BaseModel):
     paciente_id: int
     medico_id: int
+    especialidad_id: int
     fecha_hora: datetime
     duracion_minutos: int = Field(30, ge=10, le=180)
     motivo: Optional[str] = Field(None, max_length=500)
@@ -366,9 +367,21 @@ class CitaResponse(BaseModel):
     paciente_nombre: str
     medico_id: int
     medico_nombre: str
+    especialidad_id: int
+    especialidad_nombre: str
+    articulaciones: list[str]
     fecha_hora: datetime
     duracion_minutos: int
     motivo: Optional[str]
     estado: str
+
+    model_config = ConfigDict(from_attributes=True)
+    
+    
+class EspecialidadResponse(BaseModel):
+    id: int
+    nombre: str
+    area: str
+    articulaciones: list[str]
 
     model_config = ConfigDict(from_attributes=True)

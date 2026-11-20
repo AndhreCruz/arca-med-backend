@@ -130,10 +130,30 @@ BEFORE TRUNCATE ON auditoria_logs
 FOR EACH STATEMENT EXECUTE FUNCTION impedir_modificacion_auditoria();
 
 
+CREATE TABLE especialidades (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) UNIQUE NOT NULL,
+    area VARCHAR(20) NOT NULL CHECK (area IN ('traumatologia', 'kinesiologia')),
+    articulaciones TEXT[] NOT NULL
+);
+
+INSERT INTO especialidades (nombre, area, articulaciones) VALUES
+    ('Traumatología de Rodilla',        'traumatologia', ARRAY['rodilla']),
+    ('Traumatología de Hombro',         'traumatologia', ARRAY['hombro']),
+    ('Traumatología de Cadera',         'traumatologia', ARRAY['cadera']),
+    ('Traumatología de Codo',           'traumatologia', ARRAY['codo']),
+    ('Traumatología de Mano y Muñeca',  'traumatologia', ARRAY['muneca']),
+    ('Traumatología de Pie y Tobillo',  'traumatologia', ARRAY['tobillo']),
+    ('Traumatología de Columna',        'traumatologia', ARRAY['cervical', 'lumbar']),
+    ('Kinesiología de Columna',         'kinesiologia',  ARRAY['cervical', 'lumbar']),
+    ('Kinesiología Musculoesquelética', 'kinesiologia',  ARRAY['rodilla', 'tobillo', 'hombro', 'codo', 'muneca', 'cadera', 'cervical', 'lumbar']);
+
+
 CREATE TABLE citas (
     id SERIAL PRIMARY KEY,
     paciente_id INTEGER NOT NULL REFERENCES usuarios(id),
     medico_id INTEGER NOT NULL REFERENCES usuarios(id),
+    especialidad_id INTEGER NOT NULL REFERENCES especialidades(id),
     fecha_hora TIMESTAMPTZ NOT NULL,
     duracion_minutos INTEGER NOT NULL DEFAULT 30 CHECK (duracion_minutos BETWEEN 10 AND 180),
     motivo TEXT,

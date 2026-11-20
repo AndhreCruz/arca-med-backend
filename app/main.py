@@ -18,7 +18,7 @@ from database import get_db
 from models import (
     Usuario, Sintoma, Documento, MetricaFisica, GuiaClinica,
     Prediagnostico, EjercicioRecomendado, EjecucionEjercicio,
-    AuditoriaLog, Cita
+    AuditoriaLog, Cita, Especialidad
 )
 from schemas import (
     RegistroPaciente, UsuarioCreateAdmin,
@@ -34,7 +34,7 @@ from schemas import (
     EjecucionCreate, EjecucionResponse,
     AuditoriaLogResponse, VerificacionAuditoriaResponse,
     PacienteListado, CitaCreate, CitaUpdate, CitaResponse, EstadoCita,
-    PerfilUpdate, PerfilResponse
+    PerfilUpdate, PerfilResponse, EspecialidadResponse
 )
 from auth import hash_password, verify_password, create_token
 from deps import get_current_user, require_role
@@ -745,6 +745,10 @@ def crear_cita(
     if not paciente.activo:
         raise HTTPException(status_code=400, detail="El paciente está desactivado")
     obtener_medico_o_404(db, datos.medico_id)
+    
+    if not db.query(Especialidad).filter(Especialidad.id == datos.especialidad_id).first():  
+        raise HTTPException(status_code=404, detail="Especialidad no encontrada")
+    
     validar_horario_cita(db, datos.medico_id, datos.fecha_hora, datos.duracion_minutos)
 
     cita = Cita(**datos.model_dump())
@@ -765,6 +769,7 @@ def listar_citas(
     medico_id: Optional[int] = Query(None),
     paciente_id: Optional[int] = Query(None),
     estado: Optional[EstadoCita] = Query(None),
+    especialidad_id: Optional[int] = Query(None),
     usuario_actual: Usuario = Depends(require_role("medico", "admin")),
     db: Session = Depends(get_db)
 ):
@@ -786,6 +791,8 @@ def listar_citas(
         consulta = consulta.filter(Cita.fecha_hora < hasta)
     if estado:
         consulta = consulta.filter(Cita.estado == estado)
+    if especialidad_id is not None:
+        consulta = consulta.filter(Cita.especialidad_id == especialidad_id)
 
     citas = consulta.order_by(Cita.fecha_hora).all()
 
@@ -847,3 +854,11 @@ def editar_cita(
                         usuario_afectado_id=cita.paciente_id,
                         detalle=f"cita_id={cita.id}; campos: " + ", ".join(campos_cambiados))
     return cita
+
+
+@app.get("/especialidades", response_model=list[EspecialidadResponse])
+def listar_especialidades(
+    usuario_actual: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return db.query(Especialidad).order_by(Especialidad.area.desc(), Especialidad.nombre).all()
