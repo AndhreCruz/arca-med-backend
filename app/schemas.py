@@ -333,7 +333,7 @@ class PacienteListado(BaseModel):
 
 class CitaCreate(BaseModel):
     paciente_id: int
-    medico_id: int
+    medico_id: Optional[int] = None
     especialidad_id: int
     fecha_hora: datetime
     duracion_minutos: int = Field(30, ge=10, le=180)

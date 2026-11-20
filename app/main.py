@@ -738,20 +738,29 @@ def listar_pacientes(
 def crear_cita(
     datos: CitaCreate,
     request: Request,
-    usuario_actual: Usuario = Depends(require_role("admin")),
+    usuario_actual: Usuario = Depends(require_role("admin", "medico")),
     db: Session = Depends(get_db)
 ):
+    # El médico solo agenda citas consigo mismo; el admin debe indicar el médico
+    medico_id = datos.medico_id
+    if usuario_actual.rol == "medico":
+        if medico_id is not None and medico_id != usuario_actual.id:
+            raise HTTPException(status_code=403, detail="Solo puedes agendar citas contigo mismo")
+        medico_id = usuario_actual.id
+    elif medico_id is None:
+        raise HTTPException(status_code=422, detail="Debes indicar medico_id")
+
     paciente = obtener_paciente_o_404(db, datos.paciente_id)
     if not paciente.activo:
         raise HTTPException(status_code=400, detail="El paciente está desactivado")
-    obtener_medico_o_404(db, datos.medico_id)
-    
-    if not db.query(Especialidad).filter(Especialidad.id == datos.especialidad_id).first():  
-        raise HTTPException(status_code=404, detail="Especialidad no encontrada")
-    
-    validar_horario_cita(db, datos.medico_id, datos.fecha_hora, datos.duracion_minutos)
+    obtener_medico_o_404(db, medico_id)
 
-    cita = Cita(**datos.model_dump())
+    if not db.query(Especialidad).filter(Especialidad.id == datos.especialidad_id).first():
+        raise HTTPException(status_code=404, detail="Especialidad no encontrada")
+
+    validar_horario_cita(db, medico_id, datos.fecha_hora, datos.duracion_minutos)
+
+    cita = Cita(**datos.model_dump(exclude={"medico_id"}), medico_id=medico_id)
     db.add(cita)
     db.commit()
     db.refresh(cita)
@@ -819,11 +828,14 @@ def editar_cita(
     id: int,
     datos: CitaUpdate,
     request: Request,
-    usuario_actual: Usuario = Depends(require_role("admin")),
+    usuario_actual: Usuario = Depends(require_role("admin", "medico")),
     db: Session = Depends(get_db)
 ):
     cita = db.query(Cita).filter(Cita.id == id).first()
     if not cita:
+        raise HTTPException(status_code=404, detail="Cita no encontrada")
+    
+    if usuario_actual.rol == "medico" and cita.medico_id != usuario_actual.id:
         raise HTTPException(status_code=404, detail="Cita no encontrada")
 
     cambios = datos.model_dump(exclude_unset=True, exclude_none=True)
