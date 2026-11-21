@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Numeric, Boolean, LargeBinary, Date
-from datetime import date
+from datetime import date, datetime, timezone
 from sqlalchemy.sql import func
 from database import Base
 from pgvector.sqlalchemy import Vector
@@ -165,6 +165,9 @@ class Cita(Base):
     especialidad_id = Column(Integer, ForeignKey("especialidades.id"), nullable=False)
     especialidad = relationship("Especialidad")
     preconsulta_enviada_en = Column(DateTime(timezone=True))
+    sintoma = relationship("Sintoma", uselist=False, viewonly=True)
+    documentos = relationship("Documento", viewonly=True)
+    metricas = relationship("MetricaFisica", viewonly=True)
 
     @property
     def paciente_nombre(self):
@@ -181,3 +184,16 @@ class Cita(Base):
     @property
     def articulaciones(self):
         return self.especialidad.articulaciones
+    
+    @property
+    def preconsulta(self):
+        return {
+            "disponible": self.estado == "programada" and self.fecha_hora > datetime.now(timezone.utc),
+            "sintomas_registrados": self.sintoma is not None,
+            "articulacion": self.sintoma.articulacion if self.sintoma else None,
+            "lado": self.sintoma.lado if self.sintoma else None,
+            "documentos": len(self.documentos),
+            "evaluaciones": len(self.metricas),
+            "enviada": self.preconsulta_enviada_en is not None,
+            "enviada_en": self.preconsulta_enviada_en,
+        }

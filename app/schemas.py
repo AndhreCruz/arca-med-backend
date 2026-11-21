@@ -334,6 +334,17 @@ class PacienteListado(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PreconsultaEstado(BaseModel):
+    disponible: bool
+    sintomas_registrados: bool
+    articulacion: Optional[str]
+    lado: Optional[str]
+    documentos: int
+    evaluaciones: int
+    enviada: bool
+    enviada_en: Optional[datetime]
+
+
 class CitaCreate(BaseModel):
     paciente_id: int
     medico_id: Optional[int] = None
@@ -377,6 +388,7 @@ class CitaResponse(BaseModel):
     duracion_minutos: int
     motivo: Optional[str]
     estado: str
+    preconsulta: PreconsultaEstado
 
     model_config = ConfigDict(from_attributes=True)
     

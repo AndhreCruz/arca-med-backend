@@ -1007,3 +1007,24 @@ def enviar_preconsulta(
     background_tasks.add_task(generar_prediagnostico_cita_en_segundo_plano, cita.id)
     
     return {"cita_id": cita.id, "preconsulta_enviada_en": cita.preconsulta_enviada_en}
+
+
+@app.get("/mis-citas/{cita_id}/ejercicios", response_model=list[EjercicioResponse])
+def listar_ejercicios_cita(
+    cita_id: int,
+    usuario_actual: Usuario = Depends(require_role("paciente")),
+    db: Session = Depends(get_db)
+):
+    cita = db.query(Cita).filter(Cita.id == cita_id, Cita.paciente_id == usuario_actual.id).first()
+    if not cita:
+        raise HTTPException(status_code=404, detail="Cita no encontrada")
+
+    # Si ya indicó la articulación en sus síntomas, solo esa; si no, las de la especialidad
+    articulaciones = [cita.sintoma.articulacion] if cita.sintoma else cita.articulaciones
+
+    return (
+        db.query(EjercicioRecomendado)
+        .filter(EjercicioRecomendado.articulacion.in_(articulaciones))
+        .order_by(EjercicioRecomendado.articulacion, EjercicioRecomendado.nombre_ejercicio)
+        .all()
+    )
